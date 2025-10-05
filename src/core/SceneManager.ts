@@ -29,9 +29,9 @@ export class SceneManager {
   readonly scene = new Scene();
   readonly camera = new PerspectiveCamera(60, 1, 0.1, 1000);
   private selected: Object3D | null = null;
-  private listeners: { [K in keyof SceneEventMap]: SceneEventListener<K>[] } = {
-    selection: [],
-    change: []
+  private listeners: { [K in keyof SceneEventMap]: Set<SceneEventListener<K>> } = {
+    selection: new Set(),
+    change: new Set()
   };
   private loader = new GLTFLoader();
   private exporter = new GLTFExporter();
@@ -54,9 +54,9 @@ export class SceneManager {
   }
 
   on<K extends keyof SceneEventMap>(event: K, listener: SceneEventListener<K>): () => void {
-    this.listeners[event].push(listener as SceneEventListener<any>);
+    this.listeners[event].add(listener);
     return () => {
-      this.listeners[event] = this.listeners[event].filter((fn) => fn !== listener);
+      this.listeners[event].delete(listener);
     };
   }
 
