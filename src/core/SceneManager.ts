@@ -35,6 +35,7 @@ export class SceneManager {
   };
   private loader = new GLTFLoader();
   private exporter = new GLTFExporter();
+  private persistentObjects = new Set<Object3D>();
 
   constructor() {
     this.scene.background = new Color('#020617');
@@ -46,6 +47,8 @@ export class SceneManager {
     directional.position.set(5, 10, 7);
 
     this.scene.add(ambient, directional);
+    this.markPersistent(ambient);
+    this.markPersistent(directional);
 
     this.camera.position.set(4, 4, 6);
   }
@@ -130,10 +133,27 @@ export class SceneManager {
     this.notifyChange();
   }
 
+  markPersistent(object: Object3D) {
+    this.persistentObjects.add(object);
+    object.traverse((node) => {
+      node.userData = { ...node.userData, __persistent: true };
+    });
+  }
+
+  private isPersistent(object: Object3D) {
+    if (object.userData?.__persistent) return true;
+    let current: Object3D | null = object.parent;
+    while (current) {
+      if (current.userData?.__persistent) return true;
+      current = current.parent;
+    }
+    return this.persistentObjects.has(object);
+  }
+
   getOutlinerItems(): Object3D[] {
     const items: Object3D[] = [];
     this.scene.traverse((object) => {
-      if (object instanceof Mesh) {
+      if (object instanceof Mesh && !this.isPersistent(object)) {
         items.push(object);
       }
     });
@@ -223,7 +243,7 @@ export class SceneManager {
   clearScene() {
     const toRemove: Object3D[] = [];
     this.scene.traverse((child) => {
-      if (child instanceof Mesh) {
+      if (child instanceof Mesh && !this.isPersistent(child)) {
         toRemove.push(child);
       }
     });
