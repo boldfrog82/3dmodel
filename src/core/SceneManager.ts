@@ -165,11 +165,12 @@ export class SceneManager {
       this.exporter.parse(
         this.scene,
         (result) => {
+          const mimeType = binary ? 'model/gltf-binary' : 'application/json';
           if (result instanceof ArrayBuffer) {
-            resolve(new Blob([result], { type: 'model/gltf-binary' }));
+            resolve(new Blob([result], { type: mimeType }));
           } else {
-            const content = binary ? result : JSON.stringify(result, null, 2);
-            resolve(new Blob([content], { type: 'application/json' }));
+            const content = JSON.stringify(result, null, 2);
+            resolve(new Blob([content], { type: mimeType }));
           }
         },
         (error) => reject(error),
