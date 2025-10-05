@@ -1,16 +1,4 @@
 {
-codex/create-ci-workflow-and-deployment-instructions
-  "name": "3dmodel",
-  "version": "1.0.0",
-  "private": true,
-  "description": "Automation scaffolding for the 3dmodel project.",
-  "scripts": {
-    "build": "node scripts/build.js",
-    "deploy": "npm run build && npx gh-pages -d dist --dotfiles"
-  },
-  "devDependencies": {
-    "gh-pages": "^6.0.0"
-
   "name": "3dmodeler",
   "version": "0.1.0",
   "private": true,
@@ -26,6 +14,5 @@ codex/create-ci-workflow-and-deployment-instructions
   "devDependencies": {
     "typescript": "^5.4.2",
     "vite": "^5.1.0"
-main
   }
 }
