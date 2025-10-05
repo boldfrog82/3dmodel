@@ -1,0 +1,11 @@
+node_modules
+.dist
+.vite
+.DS_Store
+*.log
+pnpm-lock.yaml
+yarn.lock
+dist
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
