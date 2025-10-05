@@ -14,8 +14,7 @@
       "ES2020",
       "DOM",
       "DOM.Iterable",
-      "WebWorker",
-      "WebWorker.ImportScripts"
+      "DOM.AsyncIterable"
     ],
     "types": [
       "vite/client",
