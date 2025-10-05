@@ -3,6 +3,7 @@ import {
   BoxGeometry,
   Color,
   DirectionalLight,
+  Group,
   Mesh,
   MeshStandardMaterial,
   Object3D,
@@ -232,9 +233,10 @@ export class SceneManager {
     });
   }
 
-  private useImportedScene(imported: Scene) {
+  private useImportedScene(imported: Scene | Group) {
     this.clearScene();
-    imported.children.forEach((child) => {
+    const children = [...imported.children];
+    children.forEach((child) => {
       child.removeFromParent();
       this.scene.add(child);
     });
