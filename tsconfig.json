@@ -5,13 +5,14 @@
     "useDefineForClassFields": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "baseUrl": ".",
     "allowJs": false,
     "strict": true,
     "noEmit": true,
     "isolatedModules": true,
     "esModuleInterop": true,
     "lib": [
-      "ES2020",
+      "ES2023",
       "DOM",
       "DOM.Iterable",
       "DOM.AsyncIterable"
@@ -19,7 +20,13 @@
     "types": [
       "vite/client",
       "node"
-    ]
+    ],
+    "paths": {
+      "vite": ["./types/vite/index.d.ts"],
+      "vite/*": ["./types/vite/*"],
+      "three": ["./types/three/index.d.ts"],
+      "three/*": ["./types/three/*"]
+    }
   },
   "include": [
     "src"
