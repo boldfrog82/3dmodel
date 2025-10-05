@@ -34,6 +34,7 @@ export class GizmoManager {
       void this.undoStack.capture();
     });
     this.sceneManager.scene.add(this.controls);
+    this.sceneManager.markPersistent(this.controls);
   }
 
   registerOrbitControls(controls: OrbitControls) {
