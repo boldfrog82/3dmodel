@@ -31,7 +31,10 @@ app.mount();
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((error) => {
+    const base = import.meta.env.BASE_URL ?? '/';
+    const normalizedBase = base.endsWith('/') ? base : `${base}/`;
+    const swPath = `${normalizedBase}sw.js`.replace(/\/{2,}/g, '/');
+    navigator.serviceWorker.register(swPath).catch((error) => {
       console.warn('Service worker registration failed', error);
     });
   });

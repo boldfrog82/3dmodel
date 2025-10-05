@@ -27,7 +27,10 @@ export function createFileMenu({ sceneManager, undoStack, onToast }: FileMenuDep
   const sampleButton = document.createElement('button');
   sampleButton.textContent = 'Load Sample';
   sampleButton.addEventListener('click', async () => {
-    const response = await fetch('/sample.gltf');
+    const base = import.meta.env.BASE_URL ?? '/';
+    const normalizedBase = base.endsWith('/') ? base : `${base}/`;
+    const sampleUrl = `${normalizedBase}sample.gltf`.replace(/\/{2,}/g, '/');
+    const response = await fetch(sampleUrl);
     const text = await response.text();
     await sceneManager.importFromString(text);
     await undoStack.capture();
