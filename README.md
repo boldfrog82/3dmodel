@@ -1,5 +1,42 @@
 # 3dmodel
 
+codex/create-ci-workflow-and-deployment-instructions
+This repository now ships with a minimal Node-based toolchain so you can automate
+builds and deployment while the actual 3D experience is under construction.
+
+## Continuous integration
+
+A GitHub Actions workflow (`.github/workflows/ci.yml`) runs `npm install` and
+`npm run build` on every push and pull request. Use this to keep the build
+healthy as new assets and code are added.
+
+## Building locally
+
+```bash
+npm install
+npm run build
+```
+
+The default build script writes a placeholder HTML file to `dist/index.html`.
+Swap `scripts/build.js` for your real bundler when the project is ready.
+
+## One-click deployment
+
+Deploy to GitHub Pages with a single command once you have committed your
+changes:
+
+```bash
+npm run deploy
+```
+
+The deploy script rebuilds the site and publishes the contents of `dist/` to the
+`gh-pages` branch via the [`gh-pages`](https://www.npmjs.com/package/gh-pages)
+CLI.
+
+> **Tip:** Update the build script or replace it with your production build
+> pipeline before your first deployment so the published site reflects the real
+> project output.
+
 A lightweight 3D model viewer intended for quick prototyping and demonstrations. The project focuses on delivering an interactive scene that works well across desktop and touch devices while keeping the build pipeline simple.
 
 ## Tech Stack
@@ -72,3 +109,4 @@ At present there are no CI/CD pipelines or deployment workflows defined in this 
 - [ ] Integrate unit tests for scene helpers and UI state management.
 - [ ] Document environment configuration for bundling large assets.
 
+main
