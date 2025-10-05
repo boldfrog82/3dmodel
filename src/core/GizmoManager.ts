@@ -1,5 +1,6 @@
 import { Object3D, PerspectiveCamera } from 'three';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
+import type { TransformControlsEvent } from 'three/examples/jsm/controls/TransformControls.js';
 import { SceneManager } from './SceneManager';
 import { UndoStack } from './UndoStack';
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -20,7 +21,7 @@ export class GizmoManager {
   ) {
     this.controls = new TransformControls(camera, domElement);
     this.controls.setSize(1.1);
-    this.controls.addEventListener('dragging-changed', (event) => {
+    this.controls.addEventListener('dragging-changed', (event: TransformControlsEvent) => {
       this.active = event.value;
       if (this.orbitControls) {
         this.orbitControls.enabled = !event.value;
