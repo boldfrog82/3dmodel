@@ -411,6 +411,7 @@ export class EditableMeshController {
 
   private applySelectionDelta() {
     if (!this.activeMesh || !this.transformTarget) return;
+codex/remove-stray-markers-from-typescript-definitions
 
     const mesh = this.activeMesh;
     mesh.updateMatrixWorld(true);
@@ -449,10 +450,75 @@ export class EditableMeshController {
         positionAttr.getY(index) + deltaLocal.y,
         positionAttr.getZ(index) + deltaLocal.z
       );
+
+
+    if (this.transformTarget === this.selectionPivot) {
+      const delta = tempVector.copy(this.transformTarget.position).sub(this.transformReference);
+      if (delta.lengthSq() === 0) return;
+
+      const geometry = this.activeMesh.geometry as BufferGeometry;
+      const positionAttr = geometry.getAttribute('position') as BufferAttribute;
+      const handles = this.getHandlesForTransformation();
+      if (handles.length === 0) return;
+
+      const indices = new Set<number>();
+      for (const handle of handles) {
+        for (const index of handle.indices) {
+          indices.add(index);
+        }
+      }
+
+      for (const index of indices) {
+        const x = positionAttr.getX(index) + delta.x;
+        const y = positionAttr.getY(index) + delta.y;
+        const z = positionAttr.getZ(index) + delta.z;
+        positionAttr.setXYZ(index, x, y, z);
+      }
+
+      positionAttr.needsUpdate = true;
+      geometry.computeVertexNormals();
+      this.refreshHandles();
+    } else {
+      const handle = this.handles.find((entry) => entry.object === this.transformTarget);
+      if (!handle) return;
+      this.applyHandleDelta(handle);
+    }
+
+    this.transformReference.copy(this.transformTarget.position);
+  }
+
+  private applyHandleDelta(handle: HandleDescriptor) {
+    if (!this.activeMesh) return;
+
+    this.activeMesh.updateMatrixWorld(true);
+    const worldPosition = handle.object.getWorldPosition(tempVector);
+    const localPosition = this.activeMesh.worldToLocal(worldPosition.clone());
+    const delta = localPosition.clone().sub(handle.referencePositionLocal);
+    if (delta.lengthSq() === 0) return;
+
+    const geometry = this.activeMesh.geometry as BufferGeometry;
+    const positionAttr = geometry.getAttribute('position') as BufferAttribute;
+    const handles = this.getHandlesForTransformation();
+    if (handles.length === 0) return;
+
+    const indices = new Set<number>();
+    for (const selectedHandle of handles) {
+      for (const index of selectedHandle.indices) {
+        indices.add(index);
+      }
+    }
+
+    for (const index of indices) {
+      const x = positionAttr.getX(index) + delta.x;
+      const y = positionAttr.getY(index) + delta.y;
+      const z = positionAttr.getZ(index) + delta.z;
+      positionAttr.setXYZ(index, x, y, z);
+main
     }
 
     positionAttr.needsUpdate = true;
     geometry.computeVertexNormals();
+codex/remove-stray-markers-from-typescript-definitions
 
     this.refreshHandles();
 
@@ -467,6 +533,13 @@ export class EditableMeshController {
         this.transformReference.copy(targetWorld);
       }
     }
+
+
+    handle.referencePositionLocal.copy(localPosition);
+    handle.referencePositionWorld.copy(worldPosition);
+    handle.object.position.copy(localPosition);
+    this.updateRelatedHandles(handle);
+main
   }
 
   private commitSelectionEdit() {
@@ -538,12 +611,22 @@ export class EditableMeshController {
       const handle = handles[0];
       this.selectionPivot.visible = false;
       if (this.transformTarget !== handle.object) {
+        this.handleControls.detach();
         this.handleControls.attach(handle.object);
       }
       this.handleControls.visible = true;
       this.transformTarget = handle.object;
+codex/remove-stray-markers-from-typescript-definitions
       this.transformReference.copy(handle.referencePositionWorld);
+
+      this.transformReference.copy(handle.referencePositionLocal);
+main
       this.activeHandle = handle;
+      const worldPosition = handle.object.getWorldPosition(tempVector);
+      const misalignment = worldPosition.clone().sub(handle.referencePositionWorld).length();
+      if (misalignment > 1e-4) {
+        console.warn('EditableMeshController: handle alignment drift detected', misalignment);
+      }
     } else {
       this.updateSelectionPivot(handles);
       if (this.transformTarget !== this.selectionPivot) {
@@ -609,7 +692,10 @@ export class EditableMeshController {
         lastAdded = handle;
       }
     }
+codex/remove-stray-markers-from-typescript-definitions
 
+
+main
     if (lastAdded) {
       this.activeHandle = lastAdded;
     } else if (this.activeHandle && !this.selectedHandles.has(this.activeHandle)) {
@@ -617,7 +703,10 @@ export class EditableMeshController {
     } else if (!this.activeHandle && this.selectedHandles.size > 0) {
       this.activeHandle = this.selectedHandles.values().next().value;
     }
+codex/remove-stray-markers-from-typescript-definitions
 
+
+main
     this.updateSelectionState();
   }
 
@@ -666,6 +755,10 @@ export class EditableMeshController {
         }
       }
     }
+codex/remove-stray-markers-from-typescript-definitions
+
+
+main
   }
 
   selectHandlesInRect(bounds: NormalizedSelectionRect, options: SelectionOptions = {}) {
