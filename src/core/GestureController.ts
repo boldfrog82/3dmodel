@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RendererManager } from './RendererManager';
 import { GizmoManager } from './GizmoManager';
 import { SceneManager } from './SceneManager';
+import { EditableMeshController } from './EditableMeshController';
 
 export class GestureController {
   readonly controls: OrbitControls;
@@ -15,7 +16,8 @@ export class GestureController {
   constructor(
     private rendererManager: RendererManager,
     private gizmoManager: GizmoManager,
-    private sceneManager: SceneManager
+    private sceneManager: SceneManager,
+    private editableMeshController: EditableMeshController
   ) {
     this.defaultPosition = rendererManager.camera.position.clone();
     this.controls = new OrbitControls(rendererManager.camera, rendererManager.domElement);
@@ -90,6 +92,10 @@ export class GestureController {
     const distance = Math.hypot(event.clientX - this.pointerDown.x, event.clientY - this.pointerDown.y);
     if (elapsed < 300 && distance < 6 && !this.pointerMoved) {
       const intersections = this.rendererManager.pick(event.clientX, event.clientY);
+      if (this.sceneManager.getEditMode() !== 'object') {
+        this.editableMeshController.handlePointer(intersections);
+        return;
+      }
       const hit = intersections.find((intersection) => intersection.object.visible && intersection.object instanceof Mesh);
       if (hit) {
         this.sceneManager.select(hit.object);

@@ -60,6 +60,19 @@ body, html {
   touch-action: manipulation;
 }
 
+.mode-toggle-group {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 0.75rem;
+  background: rgba(30, 41, 59, 0.5);
+}
+
+.mode-toggle-group button.active {
+  background: rgba(59, 130, 246, 0.35);
+  border-color: rgba(96, 165, 250, 0.7);
+}
+
 .toolbar button:active {
   transform: scale(0.97);
 }
