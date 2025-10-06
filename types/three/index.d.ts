@@ -16,6 +16,7 @@ declare module "three" {
     length(): number;
     lengthSq(): number;
     copy(vector: Vector3): this;
+    project(camera: PerspectiveCamera): this;
   }
 
   export class Vector2 {
@@ -44,11 +45,13 @@ declare module "three" {
     add(...objects: Object3D[]): this;
     removeFromParent(): void;
     clear(): void;
+    getWorldPosition(target: Vector3): Vector3;
   }
 
   export class Group extends Object3D {}
 
   export class Quaternion {
+    set(x: number, y: number, z: number, w: number): this;
     setFromUnitVectors(from: Vector3, to: Vector3): this;
     copy(quaternion: Quaternion): this;
   }
