@@ -47,10 +47,7 @@ declare module "three" {
     add(...objects: Object3D[]): this;
     removeFromParent(): void;
     clear(): void;
-codex/remove-stray-markers-from-typescript-definitions
-
     getWorldPosition(target: Vector3): Vector3;
-main
     updateMatrixWorld(force?: boolean): void;
     localToWorld(vector: Vector3): Vector3;
     worldToLocal(vector: Vector3): Vector3;
