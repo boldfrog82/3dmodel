@@ -25,7 +25,8 @@ interface HandleDescriptor {
   object: Mesh;
   indices: number[];
   kind: Exclude<EditMode, 'object'>;
-  referencePosition: Vector3;
+  referencePositionLocal: Vector3;
+  referencePositionWorld: Vector3;
   normal?: Vector3;
 }
 
@@ -36,6 +37,7 @@ const tempVectorD = new Vector3();
 const tempVectorE = new Vector3();
 const tempVectorF = new Vector3();
 const tempQuaternion = new Quaternion();
+codex/enhance-editablemeshcontroller-with-multi-handle-support
 const tempVectorG = new Vector3();
 const tempVectorH = new Vector3();
 
@@ -50,6 +52,9 @@ interface SelectionOptions {
   additive?: boolean;
   toggle?: boolean;
 }
+
+const tempQuaternionB = new Quaternion();
+main
 
 export class EditableMeshController {
   private handlesGroup = new Group();
@@ -167,6 +172,11 @@ export class EditableMeshController {
     this.handlesGroup.visible = false;
     this.handleControls.visible = false;
     this.handleControls.detach();
+    this.handlesGroup.removeFromParent();
+    this.sceneManager.scene.add(this.handlesGroup);
+    this.handlesGroup.position.set(0, 0, 0);
+    this.handlesGroup.quaternion.set(0, 0, 0, 1);
+    this.handlesGroup.scale.set(1, 1, 1);
     const selected = this.sceneManager.getSelectedMesh();
     if (this.sceneManager.getEditMode() === 'object' && selected) {
       this.gizmoManager.attach(selected);
@@ -180,6 +190,12 @@ export class EditableMeshController {
       return;
     }
     if (selection !== this.activeMesh) {
+      this.handlesGroup.removeFromParent();
+      selection.add(this.handlesGroup);
+      this.handlesGroup.position.set(0, 0, 0);
+      this.handlesGroup.quaternion.set(0, 0, 0, 1);
+      this.handlesGroup.scale.set(1, 1, 1);
+      this.handlesGroup.updateMatrixWorld(true);
       this.activeMesh = selection;
       this.ensureEditableGeometry(selection);
       this.rebuildHandles();
@@ -224,20 +240,25 @@ export class EditableMeshController {
     const positionAttr = geometry.getAttribute('position') as BufferAttribute;
     const vertexCount = positionAttr.count;
 
+    const mesh = this.activeMesh;
+    mesh.updateMatrixWorld(true);
+
     for (let i = 0; i < vertexCount; i++) {
       const handleMesh = new Mesh(this.vertexGeometry, this.materials.vertex.idle);
       handleMesh.name = `Vertex ${i}`;
       handleMesh.userData.__handle = true;
-    this.getVertexPosition(positionAttr, i, tempVector);
-    handleMesh.position.copy(tempVector);
-    this.handlesGroup.add(handleMesh);
-    this.handles.push({
-      object: handleMesh,
-      indices: [i],
-      kind: 'vertex',
-      referencePosition: tempVector.clone()
-    });
-  }
+      this.getVertexPosition(positionAttr, i, tempVector);
+      const worldPosition = mesh.localToWorld(tempVector.clone());
+      handleMesh.position.copy(tempVector);
+      this.handlesGroup.add(handleMesh);
+      this.handles.push({
+        object: handleMesh,
+        indices: [i],
+        kind: 'vertex',
+        referencePositionLocal: tempVector.clone(),
+        referencePositionWorld: worldPosition.clone()
+      });
+    }
 
     const edgeMap = new Map<string, { indices: [number, number]; handle?: HandleDescriptor }>();
     for (let i = 0; i < vertexCount; i += 3) {
@@ -251,25 +272,29 @@ export class EditableMeshController {
         }
       }
       const facePosition = this.computeFaceCenter(positionAttr, tri[0], tri[1], tri[2]);
+      const faceWorldPosition = mesh.localToWorld(facePosition.clone());
       const faceMesh = new Mesh(this.faceGeometry, this.materials.face.idle);
       faceMesh.name = `Face ${i / 3}`;
       faceMesh.userData.__handle = true;
       faceMesh.position.copy(facePosition);
-      const normal = this.computeFaceNormal(positionAttr, tri[0], tri[1], tri[2]);
-      tempQuaternion.setFromUnitVectors(new Vector3(0, 0, 1), normal);
+      const localNormal = this.computeFaceNormal(positionAttr, tri[0], tri[1], tri[2]);
+      const worldNormal = this.transformNormalToWorld(localNormal, mesh);
+      tempQuaternion.setFromUnitVectors(new Vector3(0, 0, 1), localNormal);
       faceMesh.quaternion.copy(tempQuaternion);
       this.handlesGroup.add(faceMesh);
       this.handles.push({
         object: faceMesh,
         indices: tri.slice(),
         kind: 'face',
-        referencePosition: facePosition.clone(),
-        normal: normal.clone()
+        referencePositionLocal: facePosition.clone(),
+        referencePositionWorld: faceWorldPosition.clone(),
+        normal: worldNormal.clone()
       });
     }
 
     for (const { indices } of edgeMap.values()) {
       const position = this.computeEdgeCenter(positionAttr, indices[0], indices[1]);
+      const worldPosition = mesh.localToWorld(position.clone());
       const edgeMesh = new Mesh(this.edgeGeometry, this.materials.edge.idle);
       edgeMesh.userData.__handle = true;
       edgeMesh.name = `Edge ${indices.join('-')}`;
@@ -279,7 +304,8 @@ export class EditableMeshController {
         object: edgeMesh,
         indices: indices.slice(),
         kind: 'edge',
-        referencePosition: position.clone()
+        referencePositionLocal: position.clone(),
+        referencePositionWorld: worldPosition.clone()
       });
     }
 
@@ -330,36 +356,50 @@ export class EditableMeshController {
     return normal;
   }
 
+  private transformNormalToWorld(normal: Vector3, mesh: Mesh) {
+    mesh.getWorldQuaternion(tempQuaternionB);
+    return normal.clone().applyQuaternion(tempQuaternionB).normalize();
+  }
+
   private refreshHandles() {
     if (!this.activeMesh) return;
     const geometry = this.activeMesh.geometry as BufferGeometry;
     const positionAttr = geometry.getAttribute('position') as BufferAttribute;
+    const mesh = this.activeMesh;
+    mesh.updateMatrixWorld(true);
     for (const handle of this.handles) {
       switch (handle.kind) {
         case 'vertex': {
           const index = handle.indices[0];
           this.getVertexPosition(positionAttr, index, tempVector);
+          const worldPosition = mesh.localToWorld(tempVector.clone());
           handle.object.position.copy(tempVector);
-          handle.referencePosition.copy(tempVector);
+          handle.referencePositionLocal.copy(tempVector);
+          handle.referencePositionWorld.copy(worldPosition);
           break;
         }
         case 'edge': {
           const [a, b] = handle.indices;
           const center = this.computeEdgeCenter(positionAttr, a, b);
+          const worldPosition = mesh.localToWorld(center.clone());
           handle.object.position.copy(center);
-          handle.referencePosition.copy(center);
+          handle.referencePositionLocal.copy(center);
+          handle.referencePositionWorld.copy(worldPosition);
           break;
         }
         case 'face': {
           const [a, b, c] = handle.indices;
           const center = this.computeFaceCenter(positionAttr, a, b, c);
+          const worldPosition = mesh.localToWorld(center.clone());
+          const localNormal = this.computeFaceNormal(positionAttr, a, b, c);
+          const worldNormal = this.transformNormalToWorld(localNormal, mesh);
           handle.object.position.copy(center);
-          handle.referencePosition.copy(center);
-          const normal = this.computeFaceNormal(positionAttr, a, b, c);
+          handle.referencePositionLocal.copy(center);
+          handle.referencePositionWorld.copy(worldPosition);
           if (handle.normal) {
-            handle.normal.copy(normal);
+            handle.normal.copy(worldNormal);
           }
-          tempQuaternion.setFromUnitVectors(new Vector3(0, 0, 1), normal);
+          tempQuaternion.setFromUnitVectors(new Vector3(0, 0, 1), localNormal);
           handle.object.quaternion.copy(tempQuaternion);
           break;
         }
@@ -371,9 +411,18 @@ export class EditableMeshController {
     }
   }
 
+codex/enhance-editablemeshcontroller-with-multi-handle-support
   private applySelectionDelta() {
     if (!this.activeMesh || !this.transformTarget) return;
     const delta = tempVector.copy(this.transformTarget.position).sub(this.transformReference);
+
+  private applyHandleDelta(handle: HandleDescriptor) {
+    if (!this.activeMesh) return;
+    this.activeMesh.updateMatrixWorld(true);
+    const worldPosition = handle.object.getWorldPosition(tempVector);
+    const localPosition = this.activeMesh.worldToLocal(worldPosition.clone());
+    const delta = localPosition.clone().sub(handle.referencePositionLocal);
+main
     if (delta.lengthSq() === 0) return;
     const geometry = this.activeMesh.geometry as BufferGeometry;
     const positionAttr = geometry.getAttribute('position') as BufferAttribute;
@@ -393,12 +442,20 @@ export class EditableMeshController {
     }
     positionAttr.needsUpdate = true;
     geometry.computeVertexNormals();
+codex/enhance-editablemeshcontroller-with-multi-handle-support
     this.refreshHandles();
     this.transformReference.copy(this.transformTarget.position);
+
+    handle.referencePositionLocal.copy(localPosition);
+    handle.referencePositionWorld.copy(worldPosition);
+    handle.object.position.copy(localPosition);
+    this.updateRelatedHandles(handle);
+main
   }
 
   private commitSelectionEdit() {
     this.refreshHandles();
+codex/enhance-editablemeshcontroller-with-multi-handle-support
     this.updateSelectionState();
   }
 
@@ -524,6 +581,60 @@ export class EditableMeshController {
         } else if (handle.object.visible) {
           this.selectedHandles.add(handle);
           lastAdded = handle;
+
+    this.handleControls.visible = true;
+    this.handleControls.detach();
+    this.handleControls.attach(handle.object);
+    const worldPosition = handle.object.getWorldPosition(tempVector);
+    const misalignment = worldPosition.clone().sub(handle.referencePositionWorld).length();
+    if (misalignment > 1e-4) {
+      console.warn('EditableMeshController: handle alignment drift detected', misalignment);
+    }
+  }
+
+  private updateRelatedHandles(active: HandleDescriptor) {
+    if (!this.activeMesh) return;
+    const geometry = this.activeMesh.geometry as BufferGeometry;
+    const positionAttr = geometry.getAttribute('position') as BufferAttribute;
+    const mesh = this.activeMesh;
+    mesh.updateMatrixWorld(true);
+    for (const handle of this.handles) {
+      if (handle === active) continue;
+      switch (handle.kind) {
+        case 'vertex': {
+          const index = handle.indices[0];
+          this.getVertexPosition(positionAttr, index, tempVector);
+          const worldPosition = mesh.localToWorld(tempVector.clone());
+          handle.object.position.copy(tempVector);
+          handle.referencePositionLocal.copy(tempVector);
+          handle.referencePositionWorld.copy(worldPosition);
+          break;
+        }
+        case 'edge': {
+          const [a, b] = handle.indices;
+          const center = this.computeEdgeCenter(positionAttr, a, b);
+          const worldPosition = mesh.localToWorld(center.clone());
+          handle.object.position.copy(center);
+          handle.referencePositionLocal.copy(center);
+          handle.referencePositionWorld.copy(worldPosition);
+          break;
+        }
+        case 'face': {
+          const [a, b, c] = handle.indices;
+          const center = this.computeFaceCenter(positionAttr, a, b, c);
+          const worldPosition = mesh.localToWorld(center.clone());
+          const localNormal = this.computeFaceNormal(positionAttr, a, b, c);
+          const worldNormal = this.transformNormalToWorld(localNormal, mesh);
+          handle.object.position.copy(center);
+          handle.referencePositionLocal.copy(center);
+          handle.referencePositionWorld.copy(worldPosition);
+          if (handle.normal) {
+            handle.normal.copy(worldNormal);
+          }
+          tempQuaternion.setFromUnitVectors(new Vector3(0, 0, 1), localNormal);
+          handle.object.quaternion.copy(tempQuaternion);
+          break;
+main
         }
       }
     } else {
