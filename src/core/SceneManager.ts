@@ -17,9 +17,12 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 export type PrimitiveType = 'box' | 'sphere' | 'plane';
 
+export type EditMode = 'object' | 'vertex' | 'edge' | 'face';
+
 export interface SceneEventMap {
   selection: Object3D | null;
   change: void;
+  editMode: EditMode;
 }
 
 export type SceneEventListener<K extends keyof SceneEventMap> = (payload: SceneEventMap[K]) => void;
@@ -30,9 +33,11 @@ export class SceneManager {
   readonly scene = new Scene();
   readonly camera = new PerspectiveCamera(60, 1, 0.1, 1000);
   private selected: Object3D | null = null;
+  private editMode: EditMode = 'object';
   private listeners: { [K in keyof SceneEventMap]: Set<SceneEventListener<K>> } = {
     selection: new Set(),
-    change: new Set()
+    change: new Set(),
+    editMode: new Set()
   };
   private loader = new GLTFLoader();
   private exporter = new GLTFExporter();
@@ -73,6 +78,20 @@ export class SceneManager {
 
   get selection() {
     return this.selected;
+  }
+
+  getEditMode() {
+    return this.editMode;
+  }
+
+  setEditMode(mode: EditMode) {
+    if (this.editMode === mode) return;
+    this.editMode = mode;
+    this.emit('editMode', mode);
+  }
+
+  getSelectedMesh(): Mesh | null {
+    return this.selected instanceof Mesh ? this.selected : null;
   }
 
   select(object: Object3D | null) {

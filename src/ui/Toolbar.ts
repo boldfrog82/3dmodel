@@ -1,4 +1,4 @@
-import { SceneManager, PrimitiveType } from '../core/SceneManager';
+import { SceneManager, PrimitiveType, EditMode } from '../core/SceneManager';
 import { GizmoManager, TransformMode } from '../core/GizmoManager';
 import { UndoStack } from '../core/UndoStack';
 import { GestureController } from '../core/GestureController';
@@ -49,6 +49,44 @@ export function createToolbar(deps: ToolbarDeps) {
     primitiveGroup.appendChild(button);
   });
   toolbar.appendChild(primitiveGroup);
+
+  const editModeGroup = document.createElement('div');
+  editModeGroup.className = 'mode-toggle-group';
+  const editModes: { mode: EditMode; label: string }[] = [
+    { mode: 'object', label: 'Object' },
+    { mode: 'vertex', label: 'Vertex' },
+    { mode: 'edge', label: 'Edge' },
+    { mode: 'face', label: 'Face' }
+  ];
+  const editButtons = new Map<EditMode, HTMLButtonElement>();
+  editModes.forEach(({ mode, label }) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = label;
+    button.addEventListener('click', () => {
+      deps.sceneManager.setEditMode(mode);
+      if (mode === 'object') {
+        const selected = deps.sceneManager.getSelectedMesh();
+        if (selected) {
+          deps.gizmoManager.attach(selected);
+        }
+      } else if (!deps.sceneManager.getSelectedMesh()) {
+        deps.onToast('Select a mesh to edit');
+      }
+    });
+    editButtons.set(mode, button);
+    editModeGroup.appendChild(button);
+  });
+  toolbar.appendChild(editModeGroup);
+
+  const updateEditModeButtons = () => {
+    const current = deps.sceneManager.getEditMode();
+    editButtons.forEach((button, mode) => {
+      button.classList.toggle('active', mode === current);
+    });
+  };
+  updateEditModeButtons();
+  deps.sceneManager.on('editMode', () => updateEditModeButtons());
 
   const modeSelect = document.createElement('select');
   const modes: { value: TransformMode; label: string }[] = [

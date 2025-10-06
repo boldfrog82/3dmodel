@@ -12,6 +12,7 @@ declare module "three" {
     normalize(): Vector3;
     multiplyScalar(scalar: number): Vector3;
     add(vector: Vector3): Vector3;
+    cross(vector: Vector3): Vector3;
     length(): number;
     lengthSq(): number;
     copy(vector: Vector3): this;
@@ -37,13 +38,45 @@ declare module "three" {
     parent: Object3D | null;
     children: Object3D[];
     position: Vector3;
+    quaternion: Quaternion;
     userData: Record<string, any>;
     traverse(callback: (object: Object3D) => void): void;
     add(...objects: Object3D[]): this;
     removeFromParent(): void;
+    clear(): void;
   }
 
   export class Group extends Object3D {}
+
+  export class Quaternion {
+    setFromUnitVectors(from: Vector3, to: Vector3): this;
+    copy(quaternion: Quaternion): this;
+  }
+
+  export class BufferAttribute {
+    constructor(array: ArrayLike<number>, itemSize: number);
+    array: ArrayLike<number>;
+    itemSize: number;
+    count: number;
+    getX(index: number): number;
+    getY(index: number): number;
+    getZ(index: number): number;
+    setXYZ(index: number, x: number, y: number, z: number): void;
+    needsUpdate: boolean;
+  }
+
+  export class Float32BufferAttribute extends BufferAttribute {}
+
+  export class BufferGeometry {
+    index: { array: ArrayLike<number> } | null;
+    toNonIndexed(): BufferGeometry;
+    getAttribute(name: string): BufferAttribute;
+    setAttribute(name: string, attribute: BufferAttribute): void;
+    computeBoundingBox(): void;
+    computeBoundingSphere(): void;
+    computeVertexNormals(): void;
+    dispose(): void;
+  }
 
   export class Scene extends Object3D {
     background?: Color;
@@ -65,8 +98,13 @@ declare module "three" {
   export class Mesh<TGeometry = any, TMaterial = any> extends Object3D {
     constructor(geometry?: TGeometry, material?: TMaterial);
     material: TMaterial;
+    geometry: TGeometry;
     castShadow: boolean;
     receiveShadow: boolean;
+  }
+
+  export class MeshBasicMaterial {
+    constructor(parameters?: Record<string, any>);
   }
 
   export class MeshStandardMaterial {
@@ -104,7 +142,11 @@ declare module "three" {
 
   export class Raycaster {
     setFromCamera(coords: Vector2, camera: PerspectiveCamera): void;
-    intersectObjects(objects: Object3D[], recursive?: boolean): Array<{ object: Object3D }>;
+    intersectObjects(objects: Object3D[], recursive?: boolean): Intersection[];
+  }
+
+  export interface Intersection {
+    object: Object3D;
   }
 
   export class WebGLRenderer {

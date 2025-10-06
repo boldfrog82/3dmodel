@@ -5,6 +5,7 @@ import { RendererManager } from './core/RendererManager';
 import { GestureController } from './core/GestureController';
 import { GizmoManager } from './core/GizmoManager';
 import { UndoStack } from './core/UndoStack';
+import { EditableMeshController } from './core/EditableMeshController';
 
 const container = document.querySelector<HTMLDivElement>('#app');
 if (!container) {
@@ -16,8 +17,10 @@ const rendererManager = new RendererManager(sceneManager);
 const undoStack = new UndoStack();
 undoStack.bind(sceneManager);
 const gizmoManager = new GizmoManager(sceneManager, rendererManager.camera, rendererManager.domElement, undoStack);
-const gestureController = new GestureController(rendererManager, gizmoManager, sceneManager);
+const editableController = new EditableMeshController(sceneManager, rendererManager, gizmoManager, undoStack);
+const gestureController = new GestureController(rendererManager, gizmoManager, sceneManager, editableController);
 gizmoManager.registerOrbitControls(gestureController.controls);
+editableController.registerOrbitControls(gestureController.controls);
 
 const app = createApp({
   container,
