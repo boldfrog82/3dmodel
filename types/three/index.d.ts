@@ -16,6 +16,7 @@ declare module "three" {
     length(): number;
     lengthSq(): number;
     copy(vector: Vector3): this;
+    applyQuaternion(quaternion: Quaternion): Vector3;
   }
 
   export class Vector2 {
@@ -39,11 +40,17 @@ declare module "three" {
     children: Object3D[];
     position: Vector3;
     quaternion: Quaternion;
+    scale: Vector3;
     userData: Record<string, any>;
     traverse(callback: (object: Object3D) => void): void;
     add(...objects: Object3D[]): this;
     removeFromParent(): void;
     clear(): void;
+    updateMatrixWorld(force?: boolean): void;
+    localToWorld(vector: Vector3): Vector3;
+    worldToLocal(vector: Vector3): Vector3;
+    getWorldPosition(target: Vector3): Vector3;
+    getWorldQuaternion(target: Quaternion): Quaternion;
   }
 
   export class Group extends Object3D {}
@@ -51,6 +58,8 @@ declare module "three" {
   export class Quaternion {
     setFromUnitVectors(from: Vector3, to: Vector3): this;
     copy(quaternion: Quaternion): this;
+    set(x: number, y: number, z: number, w: number): this;
+    identity(): this;
   }
 
   export class BufferAttribute {
