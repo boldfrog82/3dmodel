@@ -60,7 +60,6 @@ declare module "three" {
     set(x: number, y: number, z: number, w: number): this;
     setFromUnitVectors(from: Vector3, to: Vector3): this;
     copy(quaternion: Quaternion): this;
-    set(x: number, y: number, z: number, w: number): this;
     identity(): this;
   }
 

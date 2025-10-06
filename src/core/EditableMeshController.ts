@@ -429,10 +429,25 @@ export class EditableMeshController {
         return;
       }
 
+codex/remove-stray-branch-markers-from-editablemeshcontroller
       if (deltaLocal.lengthSq() === 0) {
         this.transformReference.copy(targetWorld);
         return;
       }
+
+    for (const index of affectedIndices) {
+      positionAttr.setXYZ(
+        index,
+        positionAttr.getX(index) + deltaLocal.x,
+        positionAttr.getY(index) + deltaLocal.y,
+        positionAttr.getZ(index) + deltaLocal.z
+      );
+    }
+
+    if (this.transformTarget === this.selectionPivot) {
+      const delta = tempVector.copy(this.transformTarget.position).sub(this.transformReference);
+      if (delta.lengthSq() === 0) return;
+main
 
       const geometry = mesh.geometry as BufferGeometry;
       const positionAttr = geometry.getAttribute('position') as BufferAttribute;
@@ -495,6 +510,10 @@ export class EditableMeshController {
       const y = positionAttr.getY(index) + delta.y;
       const z = positionAttr.getZ(index) + delta.z;
       positionAttr.setXYZ(index, x, y, z);
+codex/remove-stray-branch-markers-from-editablemeshcontroller
+
+
+main
     }
 
     positionAttr.needsUpdate = true;
@@ -506,13 +525,26 @@ export class EditableMeshController {
       this.updateSelectionPivot(handles);
       this.transformReference.copy(this.selectionPivot.position);
     } else {
+codex/remove-stray-branch-markers-from-editablemeshcontroller
       this.transformReference.copy(worldPosition);
+
+      const activeHandle = this.handles.find((handle) => handle.object === this.transformTarget);
+      if (activeHandle) {
+        this.transformReference.copy(activeHandle.referencePositionWorld);
+      } else {
+        this.transformReference.copy(worldPosition);
+      }
+main
     }
 
     handle.referencePositionLocal.copy(localPosition);
     handle.referencePositionWorld.copy(worldPosition);
     handle.object.position.copy(localPosition);
     this.updateRelatedHandles(handle);
+codex/remove-stray-branch-markers-from-editablemeshcontroller
+
+
+main
   }
 
   private commitSelectionEdit() {
@@ -590,6 +622,12 @@ export class EditableMeshController {
       this.handleControls.visible = true;
       this.transformTarget = handle.object;
       this.transformReference.copy(handle.referencePositionWorld);
+codex/remove-stray-branch-markers-from-editablemeshcontroller
+
+
+      this.transformReference.copy(handle.referencePositionLocal);
+
+main
       this.activeHandle = handle;
       const worldPosition = handle.object.getWorldPosition(tempVector);
       const misalignment = worldPosition.clone().sub(handle.referencePositionWorld).length();
@@ -661,6 +699,12 @@ export class EditableMeshController {
         lastAdded = handle;
       }
     }
+codex/remove-stray-branch-markers-from-editablemeshcontroller
+
+
+
+
+main
     if (lastAdded) {
       this.activeHandle = lastAdded;
     } else if (this.activeHandle && !this.selectedHandles.has(this.activeHandle)) {
@@ -668,6 +712,12 @@ export class EditableMeshController {
     } else if (!this.activeHandle && this.selectedHandles.size > 0) {
       this.activeHandle = this.selectedHandles.values().next().value;
     }
+codex/remove-stray-branch-markers-from-editablemeshcontroller
+
+
+
+
+main
     this.updateSelectionState();
   }
 
@@ -716,6 +766,12 @@ export class EditableMeshController {
         }
       }
     }
+codex/remove-stray-branch-markers-from-editablemeshcontroller
+
+
+
+
+main
   }
 
   selectHandlesInRect(bounds: NormalizedSelectionRect, options: SelectionOptions = {}) {
