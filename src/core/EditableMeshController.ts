@@ -411,6 +411,46 @@ export class EditableMeshController {
 
   private applySelectionDelta() {
     if (!this.activeMesh || !this.transformTarget) return;
+codex/remove-stray-markers-from-typescript-definitions
+
+    const mesh = this.activeMesh;
+    mesh.updateMatrixWorld(true);
+
+    const targetWorld = this.transformTarget.getWorldPosition(tempVector);
+    const referenceWorld = tempVectorB.copy(this.transformReference);
+
+    const currentLocal = mesh.worldToLocal(targetWorld.clone());
+    const referenceLocal = mesh.worldToLocal(referenceWorld);
+    const deltaLocal = currentLocal.sub(referenceLocal);
+
+    const handles = this.getHandlesForTransformation();
+    if (handles.length === 0) {
+      this.transformReference.copy(targetWorld);
+      return;
+    }
+
+    if (deltaLocal.lengthSq() === 0) {
+      this.transformReference.copy(targetWorld);
+      return;
+    }
+
+    const geometry = mesh.geometry as BufferGeometry;
+    const positionAttr = geometry.getAttribute('position') as BufferAttribute;
+    const affectedIndices = new Set<number>();
+    for (const handle of handles) {
+      for (const index of handle.indices) {
+        affectedIndices.add(index);
+      }
+    }
+
+    for (const index of affectedIndices) {
+      positionAttr.setXYZ(
+        index,
+        positionAttr.getX(index) + deltaLocal.x,
+        positionAttr.getY(index) + deltaLocal.y,
+        positionAttr.getZ(index) + deltaLocal.z
+      );
+
 
     if (this.transformTarget === this.selectionPivot) {
       const delta = tempVector.copy(this.transformTarget.position).sub(this.transformReference);
@@ -473,15 +513,33 @@ export class EditableMeshController {
       const y = positionAttr.getY(index) + delta.y;
       const z = positionAttr.getZ(index) + delta.z;
       positionAttr.setXYZ(index, x, y, z);
+main
     }
 
     positionAttr.needsUpdate = true;
     geometry.computeVertexNormals();
+codex/remove-stray-markers-from-typescript-definitions
+
+    this.refreshHandles();
+
+    if (this.transformTarget === this.selectionPivot) {
+      this.updateSelectionPivot(handles);
+      this.transformReference.copy(this.selectionPivot.position);
+    } else {
+      const activeHandle = this.handles.find((handle) => handle.object === this.transformTarget);
+      if (activeHandle) {
+        this.transformReference.copy(activeHandle.referencePositionWorld);
+      } else {
+        this.transformReference.copy(targetWorld);
+      }
+    }
+
 
     handle.referencePositionLocal.copy(localPosition);
     handle.referencePositionWorld.copy(worldPosition);
     handle.object.position.copy(localPosition);
     this.updateRelatedHandles(handle);
+main
   }
 
   private commitSelectionEdit() {
@@ -558,7 +616,11 @@ export class EditableMeshController {
       }
       this.handleControls.visible = true;
       this.transformTarget = handle.object;
+codex/remove-stray-markers-from-typescript-definitions
+      this.transformReference.copy(handle.referencePositionWorld);
+
       this.transformReference.copy(handle.referencePositionLocal);
+main
       this.activeHandle = handle;
       const worldPosition = handle.object.getWorldPosition(tempVector);
       const misalignment = worldPosition.clone().sub(handle.referencePositionWorld).length();
@@ -606,15 +668,19 @@ export class EditableMeshController {
   private selectHandles(handles: HandleDescriptor[], options: SelectionOptions = {}) {
     const toggle = options.toggle ?? false;
     const additive = options.additive ?? false;
+
     if (!additive && !toggle) {
       this.selectedHandles.clear();
     }
+
     let lastAdded: HandleDescriptor | undefined;
+
     if (toggle) {
       for (const handle of handles) {
+        if (!handle.object.visible) continue;
         if (this.selectedHandles.has(handle)) {
           this.selectedHandles.delete(handle);
-        } else if (handle.object.visible) {
+        } else {
           this.selectedHandles.add(handle);
           lastAdded = handle;
         }
@@ -626,6 +692,10 @@ export class EditableMeshController {
         lastAdded = handle;
       }
     }
+codex/remove-stray-markers-from-typescript-definitions
+
+
+main
     if (lastAdded) {
       this.activeHandle = lastAdded;
     } else if (this.activeHandle && !this.selectedHandles.has(this.activeHandle)) {
@@ -633,6 +703,10 @@ export class EditableMeshController {
     } else if (!this.activeHandle && this.selectedHandles.size > 0) {
       this.activeHandle = this.selectedHandles.values().next().value;
     }
+codex/remove-stray-markers-from-typescript-definitions
+
+
+main
     this.updateSelectionState();
   }
 
@@ -681,7 +755,10 @@ export class EditableMeshController {
         }
       }
     }
+codex/remove-stray-markers-from-typescript-definitions
 
+
+main
   }
 
   selectHandlesInRect(bounds: NormalizedSelectionRect, options: SelectionOptions = {}) {
