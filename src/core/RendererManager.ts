@@ -34,6 +34,10 @@ export class RendererManager {
     this.start();
   }
 
+  getContainer(): HTMLElement | null {
+    return this.container ?? this.renderer.domElement.parentElement ?? null;
+  }
+
   unmount() {
     this.stop();
     this.renderer.dispose();

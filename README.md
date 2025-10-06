@@ -102,6 +102,14 @@ The project is designed for static hosting, such as GitHub Pages or Netlify. Run
 ### Automation & Workflows
 At present there are no CI/CD pipelines or deployment workflows defined in this repository. If you adopt GitHub Pages, consider adding a GitHub Actions workflow (for example, `.github/workflows/deploy.yml`) that runs `npm install`, `npm run build`, and publishes the `dist/` folder automatically.
 
+## Manual Testing
+
+### Drag Selection Workflow
+1. Select a mesh and switch the edit mode to **Vertex**. Drag with the primary pointer to draw the marquee and confirm that every vertex inside the rectangle is highlighted and that the gizmo snaps to the averaged pivot. Repeat the test while holding **Shift** (add) and **Ctrl/Cmd** (toggle removal).
+2. Switch to **Edge** mode and marquee-select across multiple edges. Verify that moving the transform gizmo translates the entire edge selection and that releasing the drag keeps the pivot centered on the group.
+3. Switch to **Face** mode, marquee-select several faces, and translate them as a group. Confirm that a marquee that captures no handles falls back to single-click behavior so a lone face can still be selected.
+4. For each mode, drag-select while holding **Ctrl/Cmd** to remove handles from an existing selection and ensure the gizmo updates or detaches when no handles remain.
+
 ## Roadmap
 - [ ] Add automated GitHub Actions build-and-deploy pipeline.
 - [ ] Provide drag-and-drop asset upload directly in the UI.

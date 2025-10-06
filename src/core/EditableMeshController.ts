@@ -37,7 +37,24 @@ const tempVectorD = new Vector3();
 const tempVectorE = new Vector3();
 const tempVectorF = new Vector3();
 const tempQuaternion = new Quaternion();
+codex/enhance-editablemeshcontroller-with-multi-handle-support
+const tempVectorG = new Vector3();
+const tempVectorH = new Vector3();
+
+interface NormalizedSelectionRect {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+interface SelectionOptions {
+  additive?: boolean;
+  toggle?: boolean;
+}
+
 const tempQuaternionB = new Quaternion();
+main
 
 export class EditableMeshController {
   private handlesGroup = new Group();
@@ -46,6 +63,10 @@ export class EditableMeshController {
   private activeMesh: Mesh | null = null;
   private handles: HandleDescriptor[] = [];
   private activeHandle?: HandleDescriptor;
+  private selectedHandles = new Set<HandleDescriptor>();
+  private selectionPivot = new Object3D();
+  private transformTarget?: Object3D;
+  private transformReference = new Vector3();
   private dragging = false;
   private vertexGeometry = new SphereGeometry(0.04, 12, 12);
   private edgeGeometry = new BoxGeometry(0.08, 0.08, 0.08);
@@ -85,17 +106,19 @@ export class EditableMeshController {
       if (this.orbitControls) {
         this.orbitControls.enabled = !event.value;
       }
-      if (!event.value) {
-        if (this.activeHandle) {
-          this.commitHandleEdit(this.activeHandle);
-          this.sceneManager.notifyChange();
-          void this.undoStack.capture();
+      if (event.value) {
+        if (this.transformTarget) {
+          this.transformReference.copy(this.transformTarget.position);
         }
+      } else if (this.selectedHandles.size > 0 || this.activeHandle) {
+        this.commitSelectionEdit();
+        this.sceneManager.notifyChange();
+        void this.undoStack.capture();
       }
     });
     this.handleControls.addEventListener('objectChange', () => {
-      if (!this.activeHandle || !this.dragging) return;
-      this.applyHandleDelta(this.activeHandle);
+      if (!this.dragging || !this.transformTarget) return;
+      this.applySelectionDelta();
       this.sceneManager.notifyChange();
     });
 
@@ -105,6 +128,11 @@ export class EditableMeshController {
     this.handlesGroup.visible = false;
     this.sceneManager.scene.add(this.handlesGroup);
     this.sceneManager.markPersistent(this.handlesGroup);
+
+    this.selectionPivot.name = 'Selection Pivot';
+    this.selectionPivot.visible = false;
+    this.sceneManager.scene.add(this.selectionPivot);
+    this.sceneManager.markPersistent(this.selectionPivot);
 
     this.sceneManager.on('selection', () => this.onSelectionChanged());
     this.sceneManager.on('change', () => this.refreshHandles());
@@ -137,6 +165,9 @@ export class EditableMeshController {
     this.activeMesh = null;
     this.handles = [];
     this.activeHandle = undefined;
+    this.selectedHandles.clear();
+    this.transformTarget = undefined;
+    this.selectionPivot.visible = false;
     this.handlesGroup.clear();
     this.handlesGroup.visible = false;
     this.handleControls.visible = false;
@@ -196,6 +227,9 @@ export class EditableMeshController {
     this.handlesGroup.clear();
     this.handles = [];
     this.activeHandle = undefined;
+    this.selectedHandles.clear();
+    this.transformTarget = undefined;
+    this.selectionPivot.visible = false;
     this.handleControls.detach();
     this.handleControls.visible = false;
 
@@ -289,12 +323,7 @@ export class EditableMeshController {
       handle.object.visible = visibleKinds.has(handle.kind);
     });
 
-    const shouldShowControls = this.activeHandle && visibleKinds.has(this.activeHandle.kind);
-    if (!shouldShowControls) {
-      this.handleControls.visible = false;
-      this.handleControls.detach();
-      this.activeHandle = undefined;
-    }
+    this.updateSelectionState();
   }
 
   private getVertexPosition(attr: BufferAttribute, index: number, target = new Vector3()) {
@@ -376,7 +405,16 @@ export class EditableMeshController {
         }
       }
     }
+    this.updateHandleHighlights();
+    if (!this.dragging) {
+      this.updateTransformAttachment();
+    }
   }
+
+codex/enhance-editablemeshcontroller-with-multi-handle-support
+  private applySelectionDelta() {
+    if (!this.activeMesh || !this.transformTarget) return;
+    const delta = tempVector.copy(this.transformTarget.position).sub(this.transformReference);
 
   private applyHandleDelta(handle: HandleDescriptor) {
     if (!this.activeMesh) return;
@@ -384,10 +422,19 @@ export class EditableMeshController {
     const worldPosition = handle.object.getWorldPosition(tempVector);
     const localPosition = this.activeMesh.worldToLocal(worldPosition.clone());
     const delta = localPosition.clone().sub(handle.referencePositionLocal);
+main
     if (delta.lengthSq() === 0) return;
     const geometry = this.activeMesh.geometry as BufferGeometry;
     const positionAttr = geometry.getAttribute('position') as BufferAttribute;
-    for (const index of handle.indices) {
+    const handles = this.getHandlesForTransformation();
+    if (handles.length === 0) return;
+    const indices = new Set<number>();
+    for (const handle of handles) {
+      for (const index of handle.indices) {
+        indices.add(index);
+      }
+    }
+    for (const index of indices) {
       const x = positionAttr.getX(index) + delta.x;
       const y = positionAttr.getY(index) + delta.y;
       const z = positionAttr.getZ(index) + delta.z;
@@ -395,14 +442,146 @@ export class EditableMeshController {
     }
     positionAttr.needsUpdate = true;
     geometry.computeVertexNormals();
+codex/enhance-editablemeshcontroller-with-multi-handle-support
+    this.refreshHandles();
+    this.transformReference.copy(this.transformTarget.position);
+
     handle.referencePositionLocal.copy(localPosition);
     handle.referencePositionWorld.copy(worldPosition);
     handle.object.position.copy(localPosition);
     this.updateRelatedHandles(handle);
+main
   }
 
-  private commitHandleEdit(handle: HandleDescriptor) {
+  private commitSelectionEdit() {
     this.refreshHandles();
+codex/enhance-editablemeshcontroller-with-multi-handle-support
+    this.updateSelectionState();
+  }
+
+  private getHandlesForTransformation(): HandleDescriptor[] {
+    const handles = this.getVisibleSelectionHandles();
+    if (handles.length === 0 && this.activeHandle && this.activeHandle.object.visible) {
+      handles.push(this.activeHandle);
+    }
+    return handles;
+  }
+
+  private updateSelectionState() {
+    this.filterSelectionByVisibility();
+    if (this.selectedHandles.size === 0) {
+      this.clearSelection();
+      return;
+    }
+    if (this.activeHandle && !this.selectedHandles.has(this.activeHandle)) {
+      this.activeHandle = this.selectedHandles.values().next().value;
+    }
+    if (!this.activeHandle) {
+      this.activeHandle = this.selectedHandles.values().next().value;
+    }
+    this.updateHandleHighlights();
+    if (!this.dragging) {
+      this.updateTransformAttachment();
+    }
+  }
+
+  private filterSelectionByVisibility() {
+    let removed = false;
+    for (const handle of Array.from(this.selectedHandles)) {
+      if (!handle.object.visible) {
+        this.selectedHandles.delete(handle);
+        removed = true;
+      }
+    }
+    if (removed && this.activeHandle && !this.selectedHandles.has(this.activeHandle)) {
+      this.activeHandle = undefined;
+    }
+  }
+
+  private getVisibleSelectionHandles(): HandleDescriptor[] {
+    const handles: HandleDescriptor[] = [];
+    for (const handle of Array.from(this.selectedHandles)) {
+      if (handle.object.visible) {
+        handles.push(handle);
+      } else {
+        this.selectedHandles.delete(handle);
+      }
+    }
+    return handles;
+  }
+
+  private updateTransformAttachment() {
+    const handles = this.getVisibleSelectionHandles();
+    if (handles.length === 0) {
+      this.transformTarget = undefined;
+      this.handleControls.visible = false;
+      this.handleControls.detach();
+      this.selectionPivot.visible = false;
+      return;
+    }
+    if (handles.length === 1) {
+      const handle = handles[0];
+      this.selectionPivot.visible = false;
+      if (this.transformTarget !== handle.object) {
+        this.handleControls.attach(handle.object);
+      }
+      this.handleControls.visible = true;
+      this.transformTarget = handle.object;
+      this.transformReference.copy(handle.referencePosition);
+      this.activeHandle = handle;
+    } else {
+      this.updateSelectionPivot(handles);
+      if (this.transformTarget !== this.selectionPivot) {
+        this.handleControls.attach(this.selectionPivot);
+      }
+      this.handleControls.visible = true;
+      this.transformTarget = this.selectionPivot;
+      this.transformReference.copy(this.selectionPivot.position);
+    }
+  }
+
+  private updateSelectionPivot(handles: HandleDescriptor[]) {
+    tempVectorH.set(0, 0, 0);
+    for (const handle of handles) {
+      handle.object.getWorldPosition(tempVectorG);
+      tempVectorH.add(tempVectorG);
+    }
+    tempVectorH.multiplyScalar(1 / handles.length);
+    this.selectionPivot.position.copy(tempVectorH);
+    this.selectionPivot.quaternion.set(0, 0, 0, 1);
+  }
+
+  private updateHandleHighlights() {
+    for (const handle of this.handles) {
+      this.highlightHandle(handle, this.selectedHandles.has(handle));
+    }
+  }
+
+  private clearSelection() {
+    this.selectedHandles.clear();
+    this.activeHandle = undefined;
+    this.transformTarget = undefined;
+    this.handleControls.visible = false;
+    this.handleControls.detach();
+    this.selectionPivot.visible = false;
+    this.updateHandleHighlights();
+  }
+
+  private selectHandles(handles: HandleDescriptor[], options: SelectionOptions = {}) {
+    const toggle = options.toggle ?? false;
+    const additive = options.additive ?? false;
+    if (!additive && !toggle) {
+      this.selectedHandles.clear();
+    }
+    let lastAdded: HandleDescriptor | undefined;
+    if (toggle) {
+      for (const handle of handles) {
+        if (this.selectedHandles.has(handle)) {
+          this.selectedHandles.delete(handle);
+        } else if (handle.object.visible) {
+          this.selectedHandles.add(handle);
+          lastAdded = handle;
+
     this.handleControls.visible = true;
     this.handleControls.detach();
     this.handleControls.attach(handle.object);
@@ -455,15 +634,48 @@ export class EditableMeshController {
           tempQuaternion.setFromUnitVectors(new Vector3(0, 0, 1), localNormal);
           handle.object.quaternion.copy(tempQuaternion);
           break;
+main
         }
       }
+    } else {
+      for (const handle of handles) {
+        if (!handle.object.visible) continue;
+        this.selectedHandles.add(handle);
+        lastAdded = handle;
+      }
     }
+    if (lastAdded) {
+      this.activeHandle = lastAdded;
+    } else if (this.activeHandle && !this.selectedHandles.has(this.activeHandle)) {
+      this.activeHandle = this.selectedHandles.values().next().value;
+    } else if (!this.activeHandle && this.selectedHandles.size > 0) {
+      this.activeHandle = this.selectedHandles.values().next().value;
+    }
+    this.updateSelectionState();
   }
 
-  private clearHandleHighlights() {
+  selectHandlesInRect(bounds: NormalizedSelectionRect, options: SelectionOptions = {}) {
+    const handlesInRect: HandleDescriptor[] = [];
+    const camera = this.rendererManager.camera;
     for (const handle of this.handles) {
-      this.highlightHandle(handle, false);
+      if (!handle.object.visible) continue;
+      handle.object.getWorldPosition(tempVectorG);
+      tempVectorG.project(camera);
+      if (tempVectorG.z < -1 || tempVectorG.z > 1) continue;
+      if (
+        tempVectorG.x >= bounds.minX &&
+        tempVectorG.x <= bounds.maxX &&
+        tempVectorG.y >= bounds.minY &&
+        tempVectorG.y <= bounds.maxY
+      ) {
+        handlesInRect.push(handle);
+      }
     }
+    if (handlesInRect.length === 0) {
+      return 0;
+    }
+    this.selectHandles(handlesInRect, options);
+    return handlesInRect.length;
   }
 
   private highlightHandle(handle: HandleDescriptor, active: boolean) {
@@ -482,7 +694,7 @@ export class EditableMeshController {
     handle.object.material = material;
   }
 
-  handlePointer(intersections: Intersection[]) {
+  handlePointer(intersections: Intersection[], event?: PointerEvent) {
     const mode = this.sceneManager.getEditMode();
     if (mode === 'object') {
       return false;
@@ -497,25 +709,29 @@ export class EditableMeshController {
       }
       return false;
     });
+    const toggle = !!(event?.ctrlKey || event?.metaKey);
+    const additive = !!event?.shiftKey && !toggle;
     if (!match) {
-      this.clearHandleHighlights();
-      this.activeHandle = undefined;
-      this.handleControls.visible = false;
-      this.handleControls.detach();
+      if (!additive && !toggle) {
+        this.clearSelection();
+      }
       return false;
     }
 
     const object = match.object as Mesh;
     const handle = this.handles.find((entry) => entry.object === object);
     if (!handle || !handle.object.visible) {
+      if (!additive && !toggle) {
+        this.clearSelection();
+      }
       return false;
     }
 
-    this.clearHandleHighlights();
-    this.highlightHandle(handle, true);
-    this.activeHandle = handle;
-    this.handleControls.visible = true;
-    this.handleControls.attach(handle.object);
+    this.selectHandles([handle], { additive, toggle });
     return true;
+  }
+
+  isTransforming() {
+    return this.dragging;
   }
 }
