@@ -6,6 +6,11 @@ declare module "three/examples/jsm/controls/TransformControls.js" {
     value: boolean;
   }
 
+  export interface TransformControlsEventMap {
+    "dragging-changed": TransformControlsEvent & { type: "dragging-changed" };
+    [event: string]: TransformControlsEvent;
+  }
+
   export class TransformControls extends Object3D {
     constructor(camera: PerspectiveCamera, domElement: HTMLElement);
     attach(object: Object3D): void;
@@ -13,7 +18,13 @@ declare module "three/examples/jsm/controls/TransformControls.js" {
     dispose(): void;
     setMode(mode: "translate" | "rotate" | "scale"): void;
     setSize(size: number): void;
-    addEventListener(type: string, listener: (event: TransformControlsEvent) => void): void;
-    removeEventListener(type: string, listener: (event: TransformControlsEvent) => void): void;
+    addEventListener<K extends keyof TransformControlsEventMap>(
+      type: K,
+      listener: (event: TransformControlsEventMap[K]) => void,
+    ): void;
+    removeEventListener<K extends keyof TransformControlsEventMap>(
+      type: K,
+      listener: (event: TransformControlsEventMap[K]) => void,
+    ): void;
   }
 }
