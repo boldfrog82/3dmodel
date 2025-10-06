@@ -37,7 +37,6 @@ const tempVectorD = new Vector3();
 const tempVectorE = new Vector3();
 const tempVectorF = new Vector3();
 const tempQuaternion = new Quaternion();
-codex/enhance-editablemeshcontroller-with-multi-handle-support
 const tempVectorG = new Vector3();
 const tempVectorH = new Vector3();
 
@@ -54,7 +53,6 @@ interface SelectionOptions {
 }
 
 const tempQuaternionB = new Quaternion();
-main
 
 export class EditableMeshController {
   private handlesGroup = new Group();
@@ -411,51 +409,68 @@ export class EditableMeshController {
     }
   }
 
-codex/enhance-editablemeshcontroller-with-multi-handle-support
   private applySelectionDelta() {
     if (!this.activeMesh || !this.transformTarget) return;
-    const delta = tempVector.copy(this.transformTarget.position).sub(this.transformReference);
 
-  private applyHandleDelta(handle: HandleDescriptor) {
-    if (!this.activeMesh) return;
-    this.activeMesh.updateMatrixWorld(true);
-    const worldPosition = handle.object.getWorldPosition(tempVector);
-    const localPosition = this.activeMesh.worldToLocal(worldPosition.clone());
-    const delta = localPosition.clone().sub(handle.referencePositionLocal);
-main
-    if (delta.lengthSq() === 0) return;
-    const geometry = this.activeMesh.geometry as BufferGeometry;
-    const positionAttr = geometry.getAttribute('position') as BufferAttribute;
+    const mesh = this.activeMesh;
+    mesh.updateMatrixWorld(true);
+
+    const targetWorld = this.transformTarget.getWorldPosition(tempVector);
+    const referenceWorld = tempVectorB.copy(this.transformReference);
+
+    const currentLocal = mesh.worldToLocal(targetWorld.clone());
+    const referenceLocal = mesh.worldToLocal(referenceWorld);
+    const deltaLocal = currentLocal.sub(referenceLocal);
+
     const handles = this.getHandlesForTransformation();
-    if (handles.length === 0) return;
-    const indices = new Set<number>();
+    if (handles.length === 0) {
+      this.transformReference.copy(targetWorld);
+      return;
+    }
+
+    if (deltaLocal.lengthSq() === 0) {
+      this.transformReference.copy(targetWorld);
+      return;
+    }
+
+    const geometry = mesh.geometry as BufferGeometry;
+    const positionAttr = geometry.getAttribute('position') as BufferAttribute;
+    const affectedIndices = new Set<number>();
     for (const handle of handles) {
       for (const index of handle.indices) {
-        indices.add(index);
+        affectedIndices.add(index);
       }
     }
-    for (const index of indices) {
-      const x = positionAttr.getX(index) + delta.x;
-      const y = positionAttr.getY(index) + delta.y;
-      const z = positionAttr.getZ(index) + delta.z;
-      positionAttr.setXYZ(index, x, y, z);
+
+    for (const index of affectedIndices) {
+      positionAttr.setXYZ(
+        index,
+        positionAttr.getX(index) + deltaLocal.x,
+        positionAttr.getY(index) + deltaLocal.y,
+        positionAttr.getZ(index) + deltaLocal.z
+      );
     }
+
     positionAttr.needsUpdate = true;
     geometry.computeVertexNormals();
-codex/enhance-editablemeshcontroller-with-multi-handle-support
-    this.refreshHandles();
-    this.transformReference.copy(this.transformTarget.position);
 
-    handle.referencePositionLocal.copy(localPosition);
-    handle.referencePositionWorld.copy(worldPosition);
-    handle.object.position.copy(localPosition);
-    this.updateRelatedHandles(handle);
-main
+    this.refreshHandles();
+
+    if (this.transformTarget === this.selectionPivot) {
+      this.updateSelectionPivot(handles);
+      this.transformReference.copy(this.selectionPivot.position);
+    } else {
+      const activeHandle = this.handles.find((handle) => handle.object === this.transformTarget);
+      if (activeHandle) {
+        this.transformReference.copy(activeHandle.referencePositionWorld);
+      } else {
+        this.transformReference.copy(targetWorld);
+      }
+    }
   }
 
   private commitSelectionEdit() {
     this.refreshHandles();
-codex/enhance-editablemeshcontroller-with-multi-handle-support
     this.updateSelectionState();
   }
 
@@ -527,7 +542,7 @@ codex/enhance-editablemeshcontroller-with-multi-handle-support
       }
       this.handleControls.visible = true;
       this.transformTarget = handle.object;
-      this.transformReference.copy(handle.referencePosition);
+      this.transformReference.copy(handle.referencePositionWorld);
       this.activeHandle = handle;
     } else {
       this.updateSelectionPivot(handles);
@@ -570,26 +585,40 @@ codex/enhance-editablemeshcontroller-with-multi-handle-support
   private selectHandles(handles: HandleDescriptor[], options: SelectionOptions = {}) {
     const toggle = options.toggle ?? false;
     const additive = options.additive ?? false;
+
     if (!additive && !toggle) {
       this.selectedHandles.clear();
     }
+
     let lastAdded: HandleDescriptor | undefined;
+
     if (toggle) {
       for (const handle of handles) {
+        if (!handle.object.visible) continue;
         if (this.selectedHandles.has(handle)) {
           this.selectedHandles.delete(handle);
-        } else if (handle.object.visible) {
+        } else {
           this.selectedHandles.add(handle);
           lastAdded = handle;
-
-    this.handleControls.visible = true;
-    this.handleControls.detach();
-    this.handleControls.attach(handle.object);
-    const worldPosition = handle.object.getWorldPosition(tempVector);
-    const misalignment = worldPosition.clone().sub(handle.referencePositionWorld).length();
-    if (misalignment > 1e-4) {
-      console.warn('EditableMeshController: handle alignment drift detected', misalignment);
+        }
+      }
+    } else {
+      for (const handle of handles) {
+        if (!handle.object.visible) continue;
+        this.selectedHandles.add(handle);
+        lastAdded = handle;
+      }
     }
+
+    if (lastAdded) {
+      this.activeHandle = lastAdded;
+    } else if (this.activeHandle && !this.selectedHandles.has(this.activeHandle)) {
+      this.activeHandle = this.selectedHandles.values().next().value;
+    } else if (!this.activeHandle && this.selectedHandles.size > 0) {
+      this.activeHandle = this.selectedHandles.values().next().value;
+    }
+
+    this.updateSelectionState();
   }
 
   private updateRelatedHandles(active: HandleDescriptor) {
@@ -634,24 +663,9 @@ codex/enhance-editablemeshcontroller-with-multi-handle-support
           tempQuaternion.setFromUnitVectors(new Vector3(0, 0, 1), localNormal);
           handle.object.quaternion.copy(tempQuaternion);
           break;
-main
         }
       }
-    } else {
-      for (const handle of handles) {
-        if (!handle.object.visible) continue;
-        this.selectedHandles.add(handle);
-        lastAdded = handle;
-      }
     }
-    if (lastAdded) {
-      this.activeHandle = lastAdded;
-    } else if (this.activeHandle && !this.selectedHandles.has(this.activeHandle)) {
-      this.activeHandle = this.selectedHandles.values().next().value;
-    } else if (!this.activeHandle && this.selectedHandles.size > 0) {
-      this.activeHandle = this.selectedHandles.values().next().value;
-    }
-    this.updateSelectionState();
   }
 
   selectHandlesInRect(bounds: NormalizedSelectionRect, options: SelectionOptions = {}) {

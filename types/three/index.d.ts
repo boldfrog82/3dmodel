@@ -16,11 +16,8 @@ declare module "three" {
     length(): number;
     lengthSq(): number;
     copy(vector: Vector3): this;
-codex/enhance-editablemeshcontroller-with-multi-handle-support
     project(camera: PerspectiveCamera): this;
-
     applyQuaternion(quaternion: Quaternion): Vector3;
-main
   }
 
   export class Vector2 {
@@ -50,15 +47,11 @@ main
     add(...objects: Object3D[]): this;
     removeFromParent(): void;
     clear(): void;
-codex/enhance-editablemeshcontroller-with-multi-handle-support
-    getWorldPosition(target: Vector3): Vector3;
-
     updateMatrixWorld(force?: boolean): void;
     localToWorld(vector: Vector3): Vector3;
     worldToLocal(vector: Vector3): Vector3;
     getWorldPosition(target: Vector3): Vector3;
     getWorldQuaternion(target: Quaternion): Quaternion;
-main
   }
 
   export class Group extends Object3D {}
