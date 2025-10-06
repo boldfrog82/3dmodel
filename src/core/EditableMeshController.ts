@@ -411,7 +411,6 @@ export class EditableMeshController {
 
   private applySelectionDelta() {
     if (!this.activeMesh || !this.transformTarget) return;
-codex/remove-stray-markers-from-typescript-definitions
 
     const mesh = this.activeMesh;
     mesh.updateMatrixWorld(true);
@@ -450,7 +449,7 @@ codex/remove-stray-markers-from-typescript-definitions
         positionAttr.getY(index) + deltaLocal.y,
         positionAttr.getZ(index) + deltaLocal.z
       );
-
+    }
 
     if (this.transformTarget === this.selectionPivot) {
       const delta = tempVector.copy(this.transformTarget.position).sub(this.transformReference);
@@ -513,12 +512,11 @@ codex/remove-stray-markers-from-typescript-definitions
       const y = positionAttr.getY(index) + delta.y;
       const z = positionAttr.getZ(index) + delta.z;
       positionAttr.setXYZ(index, x, y, z);
-main
+
     }
 
     positionAttr.needsUpdate = true;
     geometry.computeVertexNormals();
-codex/remove-stray-markers-from-typescript-definitions
 
     this.refreshHandles();
 
@@ -530,7 +528,7 @@ codex/remove-stray-markers-from-typescript-definitions
       if (activeHandle) {
         this.transformReference.copy(activeHandle.referencePositionWorld);
       } else {
-        this.transformReference.copy(targetWorld);
+        this.transformReference.copy(worldPosition);
       }
     }
 
@@ -539,7 +537,7 @@ codex/remove-stray-markers-from-typescript-definitions
     handle.referencePositionWorld.copy(worldPosition);
     handle.object.position.copy(localPosition);
     this.updateRelatedHandles(handle);
-main
+
   }
 
   private commitSelectionEdit() {
@@ -616,11 +614,10 @@ main
       }
       this.handleControls.visible = true;
       this.transformTarget = handle.object;
-codex/remove-stray-markers-from-typescript-definitions
       this.transformReference.copy(handle.referencePositionWorld);
 
       this.transformReference.copy(handle.referencePositionLocal);
-main
+
       this.activeHandle = handle;
       const worldPosition = handle.object.getWorldPosition(tempVector);
       const misalignment = worldPosition.clone().sub(handle.referencePositionWorld).length();
@@ -692,10 +689,9 @@ main
         lastAdded = handle;
       }
     }
-codex/remove-stray-markers-from-typescript-definitions
 
 
-main
+
     if (lastAdded) {
       this.activeHandle = lastAdded;
     } else if (this.activeHandle && !this.selectedHandles.has(this.activeHandle)) {
@@ -703,10 +699,9 @@ main
     } else if (!this.activeHandle && this.selectedHandles.size > 0) {
       this.activeHandle = this.selectedHandles.values().next().value;
     }
-codex/remove-stray-markers-from-typescript-definitions
 
 
-main
+
     this.updateSelectionState();
   }
 
@@ -755,10 +750,9 @@ main
         }
       }
     }
-codex/remove-stray-markers-from-typescript-definitions
 
 
-main
+
   }
 
   selectHandlesInRect(bounds: NormalizedSelectionRect, options: SelectionOptions = {}) {
