@@ -13,6 +13,8 @@ declare module "three" {
     multiplyScalar(scalar: number): Vector3;
     add(vector: Vector3): Vector3;
     cross(vector: Vector3): Vector3;
+    crossVectors(a: Vector3, b: Vector3): Vector3;
+    dot(vector: Vector3): number;
     length(): number;
     lengthSq(): number;
     copy(vector: Vector3): this;
@@ -111,6 +113,7 @@ declare module "three" {
     geometry: TGeometry;
     castShadow: boolean;
     receiveShadow: boolean;
+    renderOrder: number;
   }
 
   export class MeshBasicMaterial {
