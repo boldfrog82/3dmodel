@@ -259,6 +259,10 @@ export class EditableMeshController {
     }
 
     const edgeMap = new Map<string, { indices: [number, number]; handle?: HandleDescriptor }>();
+    const planeGroups = new Map<string, { indices: number[]; faceIndex: number }>();
+    const quantize = (value: number) => Math.round(value * 1000) / 1000;
+    let faceCounter = 0;
+
     for (let i = 0; i < vertexCount; i += 3) {
       const tri = [i, i + 1, i + 2];
       for (let e = 0; e < 3; e++) {
@@ -269,22 +273,59 @@ export class EditableMeshController {
           edgeMap.set(key, { indices: [a, b] });
         }
       }
-      const facePosition = this.computeFaceCenter(positionAttr, tri[0], tri[1], tri[2]);
-      const faceWorldPosition = mesh.localToWorld(facePosition.clone());
+
+      const faceCenter = this.computeFaceCenter(positionAttr, tri[0], tri[1], tri[2]).clone();
+      const faceNormal = this.computeFaceNormal(positionAttr, tri[0], tri[1], tri[2]).clone();
+      if (faceNormal.lengthSq() === 0) {
+        faceNormal.set(0, 0, 1);
+      } else {
+        faceNormal.normalize();
+      }
+
+      const absX = Math.abs(faceNormal.x);
+      const absY = Math.abs(faceNormal.y);
+      const absZ = Math.abs(faceNormal.z);
+      if (absX >= absY && absX >= absZ) {
+        if (faceNormal.x < 0) faceNormal.multiplyScalar(-1);
+      } else if (absY >= absX && absY >= absZ) {
+        if (faceNormal.y < 0) faceNormal.multiplyScalar(-1);
+      } else if (faceNormal.z < 0) {
+        faceNormal.multiplyScalar(-1);
+      }
+
+      const planeConstant =
+        faceNormal.x * faceCenter.x + faceNormal.y * faceCenter.y + faceNormal.z * faceCenter.z;
+      const key =
+        `${quantize(faceNormal.x)}|${quantize(faceNormal.y)}|${quantize(faceNormal.z)}|` +
+        `${quantize(planeConstant)}`;
+
+      let group = planeGroups.get(key);
+      if (!group) {
+        group = {
+          indices: [],
+          faceIndex: faceCounter++
+        };
+        planeGroups.set(key, group);
+      }
+      group.indices.push(...tri);
+    }
+
+    for (const group of planeGroups.values()) {
+      const { centroid, normal } = this.computeFaceGroupAttributes(positionAttr, group.indices);
+      const faceWorldPosition = mesh.localToWorld(centroid.clone());
+      const worldNormal = this.transformNormalToWorld(normal.clone(), mesh);
       const faceMesh = new Mesh(this.faceGeometry, this.materials.face.idle);
-      faceMesh.name = `Face ${i / 3}`;
+      faceMesh.name = `Face ${group.faceIndex}`;
       faceMesh.userData.__handle = true;
-      faceMesh.position.copy(facePosition);
-      const localNormal = this.computeFaceNormal(positionAttr, tri[0], tri[1], tri[2]);
-      const worldNormal = this.transformNormalToWorld(localNormal, mesh);
-      tempQuaternion.setFromUnitVectors(new Vector3(0, 0, 1), localNormal);
+      faceMesh.position.copy(centroid);
+      tempQuaternion.setFromUnitVectors(new Vector3(0, 0, 1), normal);
       faceMesh.quaternion.copy(tempQuaternion);
       this.handlesGroup.add(faceMesh);
       this.handles.push({
         object: faceMesh,
-        indices: tri.slice(),
+        indices: group.indices.slice(),
         kind: 'face',
-        referencePositionLocal: facePosition.clone(),
+        referencePositionLocal: centroid.clone(),
         referencePositionWorld: faceWorldPosition.clone(),
         normal: worldNormal.clone()
       });
@@ -359,6 +400,52 @@ export class EditableMeshController {
     return normal.clone().applyQuaternion(tempQuaternionB).normalize();
   }
 
+  private computeFaceGroupAttributes(attr: BufferAttribute, indices: number[]): {
+    centroid: Vector3;
+    normal: Vector3;
+  } {
+    const centroid = new Vector3();
+    const normal = new Vector3();
+    const uniqueVertices = new Map<string, Vector3>();
+    const dedupPrecision = 1e5;
+
+    const quantizeKey = (value: number) => Math.round(value * dedupPrecision) / dedupPrecision;
+
+    for (let i = 0; i < indices.length; i++) {
+      const index = indices[i];
+      this.getVertexPosition(attr, index, tempVector);
+      const key = `${quantizeKey(tempVector.x)}|${quantizeKey(tempVector.y)}|${quantizeKey(tempVector.z)}`;
+      if (!uniqueVertices.has(key)) {
+        uniqueVertices.set(key, tempVector.clone());
+      }
+    }
+
+    if (uniqueVertices.size > 0) {
+      for (const position of uniqueVertices.values()) {
+        centroid.add(position);
+      }
+      centroid.multiplyScalar(1 / uniqueVertices.size);
+    } else if (indices.length >= 3) {
+      this.getVertexPosition(attr, indices[0], centroid);
+    }
+
+    for (let i = 0; i + 2 < indices.length; i += 3) {
+      const a = indices[i];
+      const b = indices[i + 1];
+      const c = indices[i + 2];
+      const triNormal = this.computeFaceNormal(attr, a, b, c);
+      normal.add(triNormal);
+    }
+
+    if (normal.lengthSq() === 0) {
+      normal.set(0, 0, 1);
+    } else {
+      normal.normalize();
+    }
+
+    return { centroid, normal };
+  }
+
   private refreshHandles() {
     if (!this.activeMesh) return;
     const geometry = this.activeMesh.geometry as BufferGeometry;
@@ -386,18 +473,16 @@ export class EditableMeshController {
           break;
         }
         case 'face': {
-          const [a, b, c] = handle.indices;
-          const center = this.computeFaceCenter(positionAttr, a, b, c);
-          const worldPosition = mesh.localToWorld(center.clone());
-          const localNormal = this.computeFaceNormal(positionAttr, a, b, c);
-          const worldNormal = this.transformNormalToWorld(localNormal, mesh);
-          handle.object.position.copy(center);
-          handle.referencePositionLocal.copy(center);
+          const { centroid, normal } = this.computeFaceGroupAttributes(positionAttr, handle.indices);
+          const worldPosition = mesh.localToWorld(centroid.clone());
+          const worldNormal = this.transformNormalToWorld(normal.clone(), mesh);
+          handle.object.position.copy(centroid);
+          handle.referencePositionLocal.copy(centroid);
           handle.referencePositionWorld.copy(worldPosition);
           if (handle.normal) {
             handle.normal.copy(worldNormal);
           }
-          tempQuaternion.setFromUnitVectors(new Vector3(0, 0, 1), localNormal);
+          tempQuaternion.setFromUnitVectors(new Vector3(0, 0, 1), normal);
           handle.object.quaternion.copy(tempQuaternion);
           break;
         }
@@ -704,18 +789,16 @@ export class EditableMeshController {
           break;
         }
         case 'face': {
-          const [a, b, c] = handle.indices;
-          const center = this.computeFaceCenter(positionAttr, a, b, c);
-          const worldPosition = mesh.localToWorld(center.clone());
-          const localNormal = this.computeFaceNormal(positionAttr, a, b, c);
-          const worldNormal = this.transformNormalToWorld(localNormal, mesh);
-          handle.object.position.copy(center);
-          handle.referencePositionLocal.copy(center);
+          const { centroid, normal } = this.computeFaceGroupAttributes(positionAttr, handle.indices);
+          const worldPosition = mesh.localToWorld(centroid.clone());
+          const worldNormal = this.transformNormalToWorld(normal.clone(), mesh);
+          handle.object.position.copy(centroid);
+          handle.referencePositionLocal.copy(centroid);
           handle.referencePositionWorld.copy(worldPosition);
           if (handle.normal) {
             handle.normal.copy(worldNormal);
           }
-          tempQuaternion.setFromUnitVectors(new Vector3(0, 0, 1), localNormal);
+          tempQuaternion.setFromUnitVectors(new Vector3(0, 0, 1), normal);
           handle.object.quaternion.copy(tempQuaternion);
           break;
         }
