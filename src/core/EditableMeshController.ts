@@ -8,7 +8,6 @@ import {
   MeshBasicMaterial,
   Object3D,
   PerspectiveCamera,
-  PlaneGeometry,
   SphereGeometry,
   BoxGeometry,
   Vector3,
@@ -68,7 +67,6 @@ export class EditableMeshController {
   private dragging = false;
   private vertexGeometry = new SphereGeometry(0.04, 12, 12);
   private edgeGeometry = new BoxGeometry(0.08, 0.08, 0.08);
-  private faceGeometry = new PlaneGeometry(0.18, 0.18);
   private materials = {
     vertex: {
       idle: new MeshBasicMaterial({ color: '#a855f7' }),
@@ -258,6 +256,7 @@ export class EditableMeshController {
       });
     }
 
+codex/refactor-face-handle-creation-for-planar-groups
     const edgeMap = new Map<
       string,
       {
@@ -282,6 +281,11 @@ export class EditableMeshController {
       vertexKeyCache.set(index, key);
       return key;
     };
+
+    const edgeMap = new Map<string, { indices: [number, number]; handle?: HandleDescriptor }>();
+    const planeGroups = new Map<string, { indices: number[]; faceIndex: number }>();
+    const quantize = (value: number) => Math.round(value * 1000) / 1000;
+main
     let faceCounter = 0;
 
     for (let i = 0; i < vertexCount; i += 3) {
@@ -347,6 +351,7 @@ export class EditableMeshController {
         };
         planeGroups.set(key, group);
       }
+codex/refactor-face-handle-creation-for-planar-groups
       group.indices.push(...tri);
 
       for (let e = 0; e < 3; e++) {
@@ -360,18 +365,61 @@ export class EditableMeshController {
           entry.planeKeys.add(key);
         }
       }
+
+
+      const faceCenter = this.computeFaceCenter(positionAttr, tri[0], tri[1], tri[2]).clone();
+      const faceNormal = this.computeFaceNormal(positionAttr, tri[0], tri[1], tri[2]).clone();
+      if (faceNormal.lengthSq() === 0) {
+        faceNormal.set(0, 0, 1);
+      } else {
+        faceNormal.normalize();
+      }
+
+      const absX = Math.abs(faceNormal.x);
+      const absY = Math.abs(faceNormal.y);
+      const absZ = Math.abs(faceNormal.z);
+      if (absX >= absY && absX >= absZ) {
+        if (faceNormal.x < 0) faceNormal.multiplyScalar(-1);
+      } else if (absY >= absX && absY >= absZ) {
+        if (faceNormal.y < 0) faceNormal.multiplyScalar(-1);
+      } else if (faceNormal.z < 0) {
+        faceNormal.multiplyScalar(-1);
+      }
+
+      const planeConstant =
+        faceNormal.x * faceCenter.x + faceNormal.y * faceCenter.y + faceNormal.z * faceCenter.z;
+      const key =
+        `${quantize(faceNormal.x)}|${quantize(faceNormal.y)}|${quantize(faceNormal.z)}|` +
+        `${quantize(planeConstant)}`;
+
+      let group = planeGroups.get(key);
+      if (!group) {
+        group = {
+          indices: [],
+          faceIndex: faceCounter++
+        };
+        planeGroups.set(key, group);
+      }
+      group.indices.push(...tri);
+main
     }
 
     for (const group of planeGroups.values()) {
       const { centroid, normal } = this.computeFaceGroupAttributes(positionAttr, group.indices);
       const faceWorldPosition = mesh.localToWorld(centroid.clone());
       const worldNormal = this.transformNormalToWorld(normal.clone(), mesh);
+codex/refactor-face-handle-creation-for-planar-groups
       const faceMesh = new Mesh(this.faceGeometry, this.materials.face.idle);
+
+      const faceGeometry = this.createFaceHandleGeometry(positionAttr, group.indices, centroid, normal);
+      const faceMesh = new Mesh(faceGeometry, this.materials.face.idle);
+main
       faceMesh.name = `Face ${group.faceIndex}`;
       faceMesh.userData.__handle = true;
       faceMesh.position.copy(centroid);
       tempQuaternion.setFromUnitVectors(new Vector3(0, 0, 1), normal);
       faceMesh.quaternion.copy(tempQuaternion);
+      faceMesh.renderOrder = 1;
       this.handlesGroup.add(faceMesh);
       this.handles.push({
         object: faceMesh,
@@ -506,6 +554,79 @@ export class EditableMeshController {
     return { centroid, normal };
   }
 
+codex/refactor-face-handle-creation-for-planar-groups
+
+  private getFacePlaneBasis(normal: Vector3) {
+    const u = new Vector3();
+    const v = new Vector3();
+    if (Math.abs(normal.x) > Math.abs(normal.z)) {
+      u.set(-normal.y, normal.x, 0);
+    } else {
+      u.set(0, -normal.z, normal.y);
+    }
+    if (u.lengthSq() === 0) {
+      u.set(1, 0, 0);
+    }
+    u.normalize();
+    v.crossVectors(normal, u).normalize();
+    return { u, v };
+  }
+
+  private createFaceHandleGeometry(
+    attr: BufferAttribute,
+    indices: number[],
+    centroid: Vector3,
+    normal: Vector3
+  ) {
+    const geometry = new BufferGeometry();
+    const { u, v } = this.getFacePlaneBasis(normal);
+    const positions = new Float32Array(indices.length * 3);
+    for (let i = 0; i < indices.length; i++) {
+      const index = indices[i];
+      this.getVertexPosition(attr, index, tempVector);
+      tempVector.sub(centroid);
+      positions[i * 3] = tempVector.dot(u);
+      positions[i * 3 + 1] = tempVector.dot(v);
+      positions[i * 3 + 2] = 0.001;
+    }
+    geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+    geometry.computeBoundingBox();
+    geometry.computeBoundingSphere();
+    return geometry;
+  }
+
+  private updateFaceHandleGeometry(
+    handle: HandleDescriptor,
+    attr: BufferAttribute,
+    centroid: Vector3,
+    normal: Vector3
+  ) {
+    const mesh = handle.object;
+    let geometry = mesh.geometry as BufferGeometry;
+    const expectedCount = handle.indices.length * 3;
+    const positionAttribute = geometry.getAttribute('position') as BufferAttribute | undefined;
+    if (!positionAttribute || positionAttribute.count * 3 !== expectedCount) {
+      geometry.dispose();
+      geometry = this.createFaceHandleGeometry(attr, handle.indices, centroid, normal);
+      mesh.geometry = geometry;
+      return;
+    }
+    const { u, v } = this.getFacePlaneBasis(normal);
+    const array = positionAttribute.array as Float32Array;
+    for (let i = 0; i < handle.indices.length; i++) {
+      const index = handle.indices[i];
+      this.getVertexPosition(attr, index, tempVector);
+      tempVector.sub(centroid);
+      array[i * 3] = tempVector.dot(u);
+      array[i * 3 + 1] = tempVector.dot(v);
+      array[i * 3 + 2] = 0.001;
+    }
+    positionAttribute.needsUpdate = true;
+    geometry.computeBoundingBox();
+    geometry.computeBoundingSphere();
+  }
+
+main
   private refreshHandles() {
     if (!this.activeMesh) return;
     const geometry = this.activeMesh.geometry as BufferGeometry;
@@ -536,6 +657,10 @@ export class EditableMeshController {
           const { centroid, normal } = this.computeFaceGroupAttributes(positionAttr, handle.indices);
           const worldPosition = mesh.localToWorld(centroid.clone());
           const worldNormal = this.transformNormalToWorld(normal.clone(), mesh);
+codex/refactor-face-handle-creation-for-planar-groups
+
+          this.updateFaceHandleGeometry(handle, positionAttr, centroid, normal);
+main
           handle.object.position.copy(centroid);
           handle.referencePositionLocal.copy(centroid);
           handle.referencePositionWorld.copy(worldPosition);
@@ -852,6 +977,10 @@ export class EditableMeshController {
           const { centroid, normal } = this.computeFaceGroupAttributes(positionAttr, handle.indices);
           const worldPosition = mesh.localToWorld(centroid.clone());
           const worldNormal = this.transformNormalToWorld(normal.clone(), mesh);
+codex/refactor-face-handle-creation-for-planar-groups
+
+          this.updateFaceHandleGeometry(handle, positionAttr, centroid, normal);
+main
           handle.object.position.copy(centroid);
           handle.referencePositionLocal.copy(centroid);
           handle.referencePositionWorld.copy(worldPosition);
