@@ -273,12 +273,11 @@ export class EditableMeshController {
       bucket.add(index);
       return key;
     };
-    let faceCounter = 0;
-
     for (let i = 0; i < vertexCount; i++) {
       getVertexKey(i);
     }
 
+    let faceCounter = 0;
     for (let i = 0; i < vertexCount; i += 3) {
       const tri = [i, i + 1, i + 2];
       const triVertexKeys = tri.map((index) => getVertexKey(index));
@@ -380,171 +379,12 @@ export class EditableMeshController {
       });
     }
 
-codex/refactor-face-handle-creation-for-planar-groups
-
-codex/refactor-face-handle-creation-for-planar-groups
-    const edgeMap = new Map<
-      string,
-      {
-        indices: Set<number>;
-        planeKeys: Set<string>;
-        representatives: Map<string, number>;
-        occurrences: number;
-      }
-    >();
-    const planeGroups = new Map<string, { indices: number[]; faceIndex: number }>();
-    const quantize = (value: number) => Math.round(value * 1000) / 1000;
-    const vertexKeyCache = new Map<number, string>();
-    const positionDedupPrecision = 1e5;
-    const getVertexKey = (index: number) => {
-      let key = vertexKeyCache.get(index);
-      if (key) return key;
-      this.getVertexPosition(positionAttr, index, tempVector);
-      key =
-        `${Math.round(tempVector.x * positionDedupPrecision) / positionDedupPrecision}|` +
-        `${Math.round(tempVector.y * positionDedupPrecision) / positionDedupPrecision}|` +
-        `${Math.round(tempVector.z * positionDedupPrecision) / positionDedupPrecision}`;
-      vertexKeyCache.set(index, key);
-      return key;
-    };
-
-    const edgeMap = new Map<string, { indices: [number, number]; handle?: HandleDescriptor }>();
-    const planeGroups = new Map<string, { indices: number[]; faceIndex: number }>();
-    const quantize = (value: number) => Math.round(value * 1000) / 1000;
-main
-    let faceCounter = 0;
-
-    for (let i = 0; i < vertexCount; i += 3) {
-      const tri = [i, i + 1, i + 2];
-      const triVertexKeys = tri.map((index) => getVertexKey(index));
-      for (let e = 0; e < 3; e++) {
-        const a = tri[e];
-        const b = tri[(e + 1) % 3];
-        const keyA = triVertexKeys[e];
-        const keyB = triVertexKeys[(e + 1) % 3];
-        const edgeKey = keyA < keyB ? `${keyA}|${keyB}` : `${keyB}|${keyA}`;
-        let entry = edgeMap.get(edgeKey);
-        if (!entry) {
-          entry = {
-            indices: new Set<number>(),
-            planeKeys: new Set<string>(),
-            representatives: new Map<string, number>(),
-            occurrences: 0
-          };
-          edgeMap.set(edgeKey, entry);
-        }
-        entry.indices.add(a);
-        entry.indices.add(b);
-        entry.occurrences += 1;
-        if (!entry.representatives.has(keyA)) {
-          entry.representatives.set(keyA, a);
-        }
-        if (!entry.representatives.has(keyB)) {
-          entry.representatives.set(keyB, b);
-        }
-      }
-
-      const faceCenter = this.computeFaceCenter(positionAttr, tri[0], tri[1], tri[2]).clone();
-      const faceNormal = this.computeFaceNormal(positionAttr, tri[0], tri[1], tri[2]).clone();
-      if (faceNormal.lengthSq() === 0) {
-        faceNormal.set(0, 0, 1);
-      } else {
-        faceNormal.normalize();
-      }
-
-      const absX = Math.abs(faceNormal.x);
-      const absY = Math.abs(faceNormal.y);
-      const absZ = Math.abs(faceNormal.z);
-      if (absX >= absY && absX >= absZ) {
-        if (faceNormal.x < 0) faceNormal.multiplyScalar(-1);
-      } else if (absY >= absX && absY >= absZ) {
-        if (faceNormal.y < 0) faceNormal.multiplyScalar(-1);
-      } else if (faceNormal.z < 0) {
-        faceNormal.multiplyScalar(-1);
-      }
-
-      const planeConstant =
-        faceNormal.x * faceCenter.x + faceNormal.y * faceCenter.y + faceNormal.z * faceCenter.z;
-      const key =
-        `${quantize(faceNormal.x)}|${quantize(faceNormal.y)}|${quantize(faceNormal.z)}|` +
-        `${quantize(planeConstant)}`;
-
-      let group = planeGroups.get(key);
-      if (!group) {
-        group = {
-          indices: [],
-          faceIndex: faceCounter++
-        };
-        planeGroups.set(key, group);
-      }
-codex/refactor-face-handle-creation-for-planar-groups
-      group.indices.push(...tri);
-
-      for (let e = 0; e < 3; e++) {
-        const a = tri[e];
-        const b = tri[(e + 1) % 3];
-        const keyA = getVertexKey(a);
-        const keyB = getVertexKey(b);
-        const edgeKey = keyA < keyB ? `${keyA}|${keyB}` : `${keyB}|${keyA}`;
-        const entry = edgeMap.get(edgeKey);
-        if (entry) {
-          entry.planeKeys.add(key);
-        }
-      }
-
-
-      const faceCenter = this.computeFaceCenter(positionAttr, tri[0], tri[1], tri[2]).clone();
-      const faceNormal = this.computeFaceNormal(positionAttr, tri[0], tri[1], tri[2]).clone();
-      if (faceNormal.lengthSq() === 0) {
-        faceNormal.set(0, 0, 1);
-      } else {
-        faceNormal.normalize();
-      }
-
-      const absX = Math.abs(faceNormal.x);
-      const absY = Math.abs(faceNormal.y);
-      const absZ = Math.abs(faceNormal.z);
-      if (absX >= absY && absX >= absZ) {
-        if (faceNormal.x < 0) faceNormal.multiplyScalar(-1);
-      } else if (absY >= absX && absY >= absZ) {
-        if (faceNormal.y < 0) faceNormal.multiplyScalar(-1);
-      } else if (faceNormal.z < 0) {
-        faceNormal.multiplyScalar(-1);
-      }
-
-      const planeConstant =
-        faceNormal.x * faceCenter.x + faceNormal.y * faceCenter.y + faceNormal.z * faceCenter.z;
-      const key =
-        `${quantize(faceNormal.x)}|${quantize(faceNormal.y)}|${quantize(faceNormal.z)}|` +
-        `${quantize(planeConstant)}`;
-
-      let group = planeGroups.get(key);
-      if (!group) {
-        group = {
-          indices: [],
-          faceIndex: faceCounter++
-        };
-        planeGroups.set(key, group);
-      }
-      group.indices.push(...tri);
-main
-    }
-
-main
     for (const group of planeGroups.values()) {
       const { centroid, normal } = this.computeFaceGroupAttributes(positionAttr, group.indices);
       const faceWorldPosition = mesh.localToWorld(centroid.clone());
       const worldNormal = this.transformNormalToWorld(normal.clone(), mesh);
-codex/refactor-face-handle-creation-for-planar-groups
-      const faceMesh = new Mesh(this.faceGeometry, this.materials.face.idle);
-
-codex/refactor-face-handle-creation-for-planar-groups
-      const faceMesh = new Mesh(this.faceGeometry, this.materials.face.idle);
-
       const faceGeometry = this.createFaceHandleGeometry(positionAttr, group.indices, centroid, normal);
       const faceMesh = new Mesh(faceGeometry, this.materials.face.idle);
-main
-main
       faceMesh.name = `Face ${group.faceIndex}`;
       faceMesh.userData.__handle = true;
       faceMesh.position.copy(centroid);
@@ -567,9 +407,7 @@ main
       if (entry.occurrences > 1 && entry.planeKeys.size === 1) {
         continue;
       }
-codex/refactor-face-handle-creation-for-planar-groups
-      const vertexKeys = Array.from(entry.representatives.keys());
-      vertexKeys.sort();
+      const vertexKeys = Array.from(entry.representatives.keys()).sort();
       const representativePairs = vertexKeys
         .map((key) => entry.representatives.get(key)!)
         .sort((a, b) => a - b);
@@ -584,19 +422,10 @@ codex/refactor-face-handle-creation-for-planar-groups
         }
       }
       const handleIndices = Array.from(indicesSet).sort((a, b) => a - b);
-
-      const representativePairs = Array.from(entry.representatives.values());
-      representativePairs.sort((a, b) => a - b);
-main
       const position = this.computeEdgeCenter(positionAttr, representativePairs[0], representativePairs[1]);
       const worldPosition = mesh.localToWorld(position.clone());
       const edgeMesh = new Mesh(this.edgeGeometry, this.materials.edge.idle);
       edgeMesh.userData.__handle = true;
-codex/refactor-face-handle-creation-for-planar-groups
-
-      const handleIndices = Array.from(entry.indices);
-      handleIndices.sort((a, b) => a - b);
-main
       edgeMesh.name = `Edge ${handleIndices.join('-')}`;
       edgeMesh.position.copy(position);
       this.handlesGroup.add(edgeMesh);
@@ -611,7 +440,6 @@ main
 
     this.updateHandleVisibility();
   }
-
   private updateHandleVisibility() {
     const mode = this.sceneManager.getEditMode();
     const visibleKinds: Set<HandleDescriptor['kind']> = new Set();
@@ -668,16 +496,10 @@ main
     const centroid = new Vector3();
     const normal = new Vector3();
     const uniqueVertices = new Map<string, Vector3>();
-codex/refactor-face-handle-creation-for-planar-groups
     const dedupPrecision = POSITION_KEY_PRECISION;
-
-    const dedupPrecision = 1e5;
-main
-
     const quantizeKey = (value: number) => Math.round(value * dedupPrecision) / dedupPrecision;
 
-    for (let i = 0; i < indices.length; i++) {
-      const index = indices[i];
+    for (const index of indices) {
       this.getVertexPosition(attr, index, tempVector);
       const key = `${quantizeKey(tempVector.x)}|${quantizeKey(tempVector.y)}|${quantizeKey(tempVector.z)}`;
       if (!uniqueVertices.has(key)) {
@@ -710,11 +532,6 @@ main
 
     return { centroid, normal };
   }
-
-codex/refactor-face-handle-creation-for-planar-groups
-
-codex/refactor-face-handle-creation-for-planar-groups
-
   private getFacePlaneBasis(normal: Vector3) {
     const u = new Vector3();
     const v = new Vector3();
@@ -785,8 +602,6 @@ codex/refactor-face-handle-creation-for-planar-groups
     geometry.computeBoundingSphere();
   }
 
-main
-main
   private refreshHandles() {
     if (!this.activeMesh) return;
     const geometry = this.activeMesh.geometry as BufferGeometry;
@@ -794,55 +609,13 @@ main
     const mesh = this.activeMesh;
     mesh.updateMatrixWorld(true);
     for (const handle of this.handles) {
-codex/refactor-face-handle-creation-for-planar-groups
       this.updateHandleTransform(handle, positionAttr, mesh);
-
-      switch (handle.kind) {
-        case 'vertex': {
-          const index = handle.indices[0];
-          this.getVertexPosition(positionAttr, index, tempVector);
-          const worldPosition = mesh.localToWorld(tempVector.clone());
-          handle.object.position.copy(tempVector);
-          handle.referencePositionLocal.copy(tempVector);
-          handle.referencePositionWorld.copy(worldPosition);
-          break;
-        }
-        case 'edge': {
-          const [a, b] = handle.indices;
-          const center = this.computeEdgeCenter(positionAttr, a, b);
-          const worldPosition = mesh.localToWorld(center.clone());
-          handle.object.position.copy(center);
-          handle.referencePositionLocal.copy(center);
-          handle.referencePositionWorld.copy(worldPosition);
-          break;
-        }
-        case 'face': {
-          const { centroid, normal } = this.computeFaceGroupAttributes(positionAttr, handle.indices);
-          const worldPosition = mesh.localToWorld(centroid.clone());
-          const worldNormal = this.transformNormalToWorld(normal.clone(), mesh);
-codex/refactor-face-handle-creation-for-planar-groups
-
-          this.updateFaceHandleGeometry(handle, positionAttr, centroid, normal);
-main
-          handle.object.position.copy(centroid);
-          handle.referencePositionLocal.copy(centroid);
-          handle.referencePositionWorld.copy(worldPosition);
-          if (handle.normal) {
-            handle.normal.copy(worldNormal);
-          }
-          tempQuaternion.setFromUnitVectors(new Vector3(0, 0, 1), normal);
-          handle.object.quaternion.copy(tempQuaternion);
-          break;
-        }
-      }
-main
     }
     this.updateHandleHighlights();
     if (!this.dragging) {
       this.updateTransformAttachment();
     }
   }
-
   private applySelectionDelta() {
     if (!this.activeMesh || !this.transformTarget) return;
 
@@ -1118,11 +891,9 @@ main
     mesh.updateMatrixWorld(true);
     for (const handle of this.handles) {
       if (handle === active) continue;
-codex/refactor-face-handle-creation-for-planar-groups
       this.updateHandleTransform(handle, positionAttr, mesh);
     }
   }
-
   private computeIndicesCentroid(
     attr: BufferAttribute,
     indices: number[],
@@ -1193,49 +964,12 @@ codex/refactor-face-handle-creation-for-planar-groups
         const { centroid, normal } = this.computeFaceGroupAttributes(attr, handle.indices);
         const worldPosition = mesh.localToWorld(centroid.clone());
         const worldNormal = this.transformNormalToWorld(normal.clone(), mesh);
+        this.updateFaceHandleGeometry(handle, attr, centroid, normal);
         handle.object.position.copy(centroid);
         handle.referencePositionLocal.copy(centroid);
         handle.referencePositionWorld.copy(worldPosition);
         if (handle.normal) {
           handle.normal.copy(worldNormal);
-
-      switch (handle.kind) {
-        case 'vertex': {
-          const index = handle.indices[0];
-          this.getVertexPosition(positionAttr, index, tempVector);
-          const worldPosition = mesh.localToWorld(tempVector.clone());
-          handle.object.position.copy(tempVector);
-          handle.referencePositionLocal.copy(tempVector);
-          handle.referencePositionWorld.copy(worldPosition);
-          break;
-        }
-        case 'edge': {
-          const [a, b] = handle.indices;
-          const center = this.computeEdgeCenter(positionAttr, a, b);
-          const worldPosition = mesh.localToWorld(center.clone());
-          handle.object.position.copy(center);
-          handle.referencePositionLocal.copy(center);
-          handle.referencePositionWorld.copy(worldPosition);
-          break;
-        }
-        case 'face': {
-          const { centroid, normal } = this.computeFaceGroupAttributes(positionAttr, handle.indices);
-          const worldPosition = mesh.localToWorld(centroid.clone());
-          const worldNormal = this.transformNormalToWorld(normal.clone(), mesh);
-codex/refactor-face-handle-creation-for-planar-groups
-
-          this.updateFaceHandleGeometry(handle, positionAttr, centroid, normal);
-main
-          handle.object.position.copy(centroid);
-          handle.referencePositionLocal.copy(centroid);
-          handle.referencePositionWorld.copy(worldPosition);
-          if (handle.normal) {
-            handle.normal.copy(worldNormal);
-          }
-          tempQuaternion.setFromUnitVectors(new Vector3(0, 0, 1), normal);
-          handle.object.quaternion.copy(tempQuaternion);
-          break;
-main
         }
         tempQuaternion.setFromUnitVectors(new Vector3(0, 0, 1), normal);
         handle.object.quaternion.copy(tempQuaternion);
@@ -1243,7 +977,6 @@ main
       }
     }
   }
-
   selectHandlesInRect(bounds: NormalizedSelectionRect, options: SelectionOptions = {}) {
     const handlesInRect: HandleDescriptor[] = [];
     const camera = this.rendererManager.camera;
