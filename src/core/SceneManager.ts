@@ -180,22 +180,52 @@ export class SceneManager {
     return items;
   }
 
+  private hideHelperObjects() {
+    const hidden: { object: Object3D; visible: boolean }[] = [];
+    this.scene.traverse((object) => {
+      if (object.userData?.__handle || object.userData?.__helper) {
+        hidden.push({ object, visible: object.visible });
+        object.visible = false;
+      }
+    });
+    return hidden;
+  }
+
   async exportScene(binary = false): Promise<Blob> {
+    const hiddenHelpers = this.hideHelperObjects();
+    let restored = false;
+    const restoreHelpers = () => {
+      if (restored) return;
+      restored = true;
+      for (const { object, visible } of hiddenHelpers) {
+        object.visible = visible;
+      }
+    };
+
     return new Promise((resolve, reject) => {
-      this.exporter.parse(
-        this.scene,
-        (result) => {
-          const mimeType = binary ? 'model/gltf-binary' : 'application/json';
-          if (result instanceof ArrayBuffer) {
-            resolve(new Blob([result], { type: mimeType }));
-          } else {
-            const content = JSON.stringify(result, null, 2);
-            resolve(new Blob([content], { type: mimeType }));
-          }
-        },
-        (error) => reject(error),
-        { binary }
-      );
+      try {
+        this.exporter.parse(
+          this.scene,
+          (result) => {
+            restoreHelpers();
+            const mimeType = binary ? 'model/gltf-binary' : 'application/json';
+            if (result instanceof ArrayBuffer) {
+              resolve(new Blob([result], { type: mimeType }));
+            } else {
+              const content = JSON.stringify(result, null, 2);
+              resolve(new Blob([content], { type: mimeType }));
+            }
+          },
+          (error) => {
+            restoreHelpers();
+            reject(error);
+          },
+          { binary }
+        );
+      } catch (error) {
+        restoreHelpers();
+        reject(error);
+      }
     });
   }
 

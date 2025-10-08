@@ -97,6 +97,7 @@ export class EditableMeshController {
     this.handleControls.setMode('translate');
     this.handleControls.setSize(0.7);
     this.handleControls.visible = false;
+    this.handleControls.userData.__helper = true;
     this.handleControls.addEventListener('mouseDown', () => {
       void this.undoStack.capture();
     });
@@ -127,11 +128,13 @@ export class EditableMeshController {
     this.handlesGroup.visible = false;
     this.sceneManager.scene.add(this.handlesGroup);
     this.sceneManager.markPersistent(this.handlesGroup);
+    this.handlesGroup.userData.__helper = true;
 
     this.selectionPivot.name = 'Selection Pivot';
     this.selectionPivot.visible = false;
     this.sceneManager.scene.add(this.selectionPivot);
     this.sceneManager.markPersistent(this.selectionPivot);
+    this.selectionPivot.userData.__helper = true;
 
     this.sceneManager.on('selection', () => this.onSelectionChanged());
     this.sceneManager.on('change', () => this.refreshHandles());
