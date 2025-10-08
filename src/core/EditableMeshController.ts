@@ -40,6 +40,7 @@ const tempVectorG = new Vector3();
 const tempVectorH = new Vector3();
 const tempVectorI = new Vector3();
 const tempVectorJ = new Vector3();
+const tempVectorK = new Vector3();
 
 interface NormalizedSelectionRect {
   minX: number;
@@ -84,6 +85,9 @@ export class EditableMeshController {
       selected: new MeshBasicMaterial({ color: '#f97316', transparent: true, opacity: 0.85, side: 2 })
     }
   } as const;
+
+  private vertexIndexToPositionKey = new Map<number, string>();
+  private positionKeyToIndices = new Map<string, Set<number>>();
 
   constructor(
     private sceneManager: SceneManager,
@@ -242,7 +246,8 @@ export class EditableMeshController {
     const mesh = this.activeMesh;
     mesh.updateMatrixWorld(true);
 
-    const indicesByVertexKey = new Map<string, Set<number>>();
+    this.positionKeyToIndices = new Map<string, Set<number>>();
+    this.vertexIndexToPositionKey = new Map<number, string>();
     const edgeMap = new Map<
       string,
       {
@@ -265,10 +270,11 @@ export class EditableMeshController {
         `${Math.round(tempVector.y * positionDedupPrecision) / positionDedupPrecision}|` +
         `${Math.round(tempVector.z * positionDedupPrecision) / positionDedupPrecision}`;
       vertexKeyCache.set(index, key);
-      let bucket = indicesByVertexKey.get(key);
+      this.vertexIndexToPositionKey.set(index, key);
+      let bucket = this.positionKeyToIndices.get(key);
       if (!bucket) {
         bucket = new Set<number>();
-        indicesByVertexKey.set(key, bucket);
+        this.positionKeyToIndices.set(key, bucket);
       }
       bucket.add(index);
       return key;
@@ -356,7 +362,7 @@ export class EditableMeshController {
       }
     }
 
-    const vertexEntries = Array.from(indicesByVertexKey.entries()).map(([key, indexSet]) => ({
+    const vertexEntries = Array.from(this.positionKeyToIndices.entries()).map(([key, indexSet]) => ({
       key,
       indices: Array.from(indexSet).sort((a, b) => a - b)
     }));
@@ -416,7 +422,7 @@ export class EditableMeshController {
         indicesSet.add(index);
       }
       for (const key of vertexKeys) {
-        const duplicates = indicesByVertexKey.get(key);
+        const duplicates = this.positionKeyToIndices.get(key);
         if (duplicates) {
           duplicates.forEach((duplicate) => indicesSet.add(duplicate));
         }
@@ -456,6 +462,66 @@ export class EditableMeshController {
 
   private getVertexPosition(attr: BufferAttribute, index: number, target = new Vector3()) {
     return target.set(attr.getX(index), attr.getY(index), attr.getZ(index));
+  }
+
+  private formatPositionKey(vector: Vector3) {
+    const precision = POSITION_KEY_PRECISION;
+    return (
+      `${Math.round(vector.x * precision) / precision}|` +
+      `${Math.round(vector.y * precision) / precision}|` +
+      `${Math.round(vector.z * precision) / precision}`
+    );
+  }
+
+  private computePositionKey(attr: BufferAttribute, index: number) {
+    this.getVertexPosition(attr, index, tempVectorK);
+    return this.formatPositionKey(tempVectorK);
+  }
+
+  private addIndicesSharingPosition(index: number, attr: BufferAttribute, target: Set<number>) {
+    let key = this.vertexIndexToPositionKey.get(index);
+    if (!key) {
+      key = this.computePositionKey(attr, index);
+      this.vertexIndexToPositionKey.set(index, key);
+      let bucket = this.positionKeyToIndices.get(key);
+      if (!bucket) {
+        bucket = new Set<number>();
+        this.positionKeyToIndices.set(key, bucket);
+      }
+      bucket.add(index);
+    }
+    const bucket = this.positionKeyToIndices.get(key);
+    if (bucket && bucket.size > 0) {
+      for (const bucketIndex of bucket) {
+        target.add(bucketIndex);
+      }
+    } else {
+      target.add(index);
+    }
+  }
+
+  private updatePositionKeyBucketsForIndices(indices: Set<number>, attr: BufferAttribute) {
+    for (const index of indices) {
+      const existingKey = this.vertexIndexToPositionKey.get(index);
+      if (existingKey) {
+        const bucket = this.positionKeyToIndices.get(existingKey);
+        if (bucket) {
+          bucket.delete(index);
+          if (bucket.size === 0) {
+            this.positionKeyToIndices.delete(existingKey);
+          }
+        }
+      }
+
+      const newKey = this.computePositionKey(attr, index);
+      let newBucket = this.positionKeyToIndices.get(newKey);
+      if (!newBucket) {
+        newBucket = new Set<number>();
+        this.positionKeyToIndices.set(newKey, newBucket);
+      }
+      newBucket.add(index);
+      this.vertexIndexToPositionKey.set(index, newKey);
+    }
   }
 
   private computeEdgeCenter(attr: BufferAttribute, a: number, b: number) {
@@ -646,7 +712,7 @@ export class EditableMeshController {
       const affectedIndices = new Set<number>();
       for (const handle of handles) {
         for (const index of handle.indices) {
-          affectedIndices.add(index);
+          this.addIndicesSharingPosition(index, positionAttr, affectedIndices);
         }
       }
 
@@ -658,6 +724,8 @@ export class EditableMeshController {
           positionAttr.getZ(index) + deltaLocal.z
         );
       }
+
+      this.updatePositionKeyBucketsForIndices(affectedIndices, positionAttr);
 
       positionAttr.needsUpdate = true;
       geometry.computeVertexNormals();
@@ -693,7 +761,7 @@ export class EditableMeshController {
     const indices = new Set<number>();
     for (const selectedHandle of handles) {
       for (const index of selectedHandle.indices) {
-        indices.add(index);
+        this.addIndicesSharingPosition(index, positionAttr, indices);
       }
     }
 
@@ -703,6 +771,8 @@ export class EditableMeshController {
       const z = positionAttr.getZ(index) + delta.z;
       positionAttr.setXYZ(index, x, y, z);
     }
+
+    this.updatePositionKeyBucketsForIndices(indices, positionAttr);
 
     positionAttr.needsUpdate = true;
     geometry.computeVertexNormals();
