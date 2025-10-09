@@ -69,6 +69,8 @@ export class EditableMeshController {
   private transformTarget?: Object3D;
   private transformReference = new Vector3();
   private dragging = false;
+  private previousHandleSpace: 'world' | 'local' = 'world';
+  private overriddenHandleSpace = false;
   private vertexGeometry = new SphereGeometry(0.04, 12, 12);
   private edgeGeometry = new BoxGeometry(0.08, 0.08, 0.08);
   private materials = {
@@ -168,6 +170,10 @@ export class EditableMeshController {
   }
 
   private exitEditing() {
+    if (this.overriddenHandleSpace) {
+      this.handleControls.setSpace(this.previousHandleSpace);
+      this.overriddenHandleSpace = false;
+    }
     this.activeMesh = null;
     this.handles = [];
     this.activeHandle = undefined;
@@ -194,6 +200,11 @@ export class EditableMeshController {
     if (!(selection instanceof Mesh)) {
       this.exitEditing();
       return;
+    }
+    if (!this.overriddenHandleSpace) {
+      this.previousHandleSpace = this.handleControls.space;
+      this.handleControls.setSpace('local');
+      this.overriddenHandleSpace = true;
     }
     if (selection !== this.activeMesh) {
       this.handlesGroup.removeFromParent();
