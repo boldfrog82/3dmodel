@@ -27,6 +27,10 @@ interface HandleDescriptor {
   referencePositionLocal: Vector3;
   referencePositionWorld: Vector3;
   normal?: Vector3;
+  extrusion?: {
+    originalIndices: number[];
+    extrudedIndices: number[];
+  };
 }
 
 const tempVector = new Vector3();
@@ -110,6 +114,7 @@ export class EditableMeshController {
 
   private vertexIndexToPositionKey = new Map<number, string>();
   private positionKeyToIndices = new Map<string, Set<number>>();
+  private pendingExtrusions: { kind: HandleDescriptor['kind']; indices: number[] }[] = [];
 
   constructor(
     private sceneManager: SceneManager,
@@ -194,6 +199,7 @@ export class EditableMeshController {
       this.handleControls.setSpace(this.previousHandleSpace);
       this.overriddenHandleSpace = false;
     }
+    this.pendingExtrusions = [];
     this.activeMesh = null;
     this.handles = [];
     this.activeHandle = undefined;
@@ -716,6 +722,174 @@ export class EditableMeshController {
       this.updateTransformAttachment();
     }
   }
+
+  private prepareFaceExtrusion(handles: HandleDescriptor[]) {
+    if (!this.activeMesh) return;
+    const faceHandles = handles.filter((handle) => handle.kind === 'face' && !handle.extrusion);
+    if (faceHandles.length === 0) {
+      return;
+    }
+
+    const geometry = this.activeMesh.geometry as BufferGeometry;
+    const positionAttr = geometry.getAttribute('position') as BufferAttribute;
+    const normalAttr = geometry.getAttribute('normal') as BufferAttribute | undefined;
+    const uvAttr = geometry.getAttribute('uv') as BufferAttribute | undefined;
+
+    const positions = Array.from(positionAttr.array as ArrayLike<number>);
+    const normals = normalAttr ? Array.from(normalAttr.array as ArrayLike<number>) : null;
+    const uvs = uvAttr ? Array.from(uvAttr.array as ArrayLike<number>) : null;
+
+    const copyVertex = (index: number) => {
+      const base = index * 3;
+      positions.push(positions[base], positions[base + 1], positions[base + 2]);
+      if (normals) {
+        const normalBase = index * 3;
+        normals.push(normals[normalBase], normals[normalBase + 1], normals[normalBase + 2]);
+      }
+      if (uvs) {
+        const uvBase = index * 2;
+        uvs.push(uvs[uvBase], uvs[uvBase + 1]);
+      }
+      return positions.length / 3 - 1;
+    };
+
+    const edgeUsage = this.collectFaceEdgeUsage(faceHandles);
+    const updatedHandles: HandleDescriptor[] = [];
+
+    for (const handle of faceHandles) {
+      const originalIndices = handle.indices.slice();
+      const uniqueOriginal = Array.from(new Set(originalIndices));
+      const extrudedMap = new Map<number, number>();
+      for (const index of uniqueOriginal) {
+        const newIndex = copyVertex(index);
+        extrudedMap.set(index, newIndex);
+      }
+
+      const newIndices = originalIndices.map((index) => extrudedMap.get(index)!);
+      const boundaryEdges = this.getBoundaryEdgesForHandle(handle, edgeUsage);
+      for (const edge of boundaryEdges) {
+        const fromNew = extrudedMap.get(edge.from)!;
+        const toNew = extrudedMap.get(edge.to)!;
+        copyVertex(edge.from);
+        copyVertex(edge.to);
+        copyVertex(toNew);
+        copyVertex(edge.from);
+        copyVertex(toNew);
+        copyVertex(fromNew);
+      }
+
+      handle.indices = newIndices;
+      handle.extrusion = {
+        originalIndices,
+        extrudedIndices: newIndices.slice()
+      };
+      this.pendingExtrusions.push({ kind: handle.kind, indices: newIndices.slice() });
+      updatedHandles.push(handle);
+    }
+
+    geometry.setAttribute('position', new Float32BufferAttribute(new Float32Array(positions), 3));
+    if (uvs) {
+      geometry.setAttribute('uv', new Float32BufferAttribute(new Float32Array(uvs), 2));
+    }
+    if (normals) {
+      geometry.setAttribute('normal', new Float32BufferAttribute(new Float32Array(normals), 3));
+    }
+
+    geometry.computeVertexNormals();
+    geometry.computeBoundingBox();
+    geometry.computeBoundingSphere();
+
+    const updatedPositionAttr = geometry.getAttribute('position') as BufferAttribute;
+    this.rebuildPositionLookup(updatedPositionAttr);
+
+    const mesh = this.activeMesh;
+    mesh.updateMatrixWorld(true);
+    for (const handle of updatedHandles) {
+      this.updateHandleTransform(handle, updatedPositionAttr, mesh);
+    }
+  }
+
+  private collectFaceEdgeUsage(handles: HandleDescriptor[]) {
+    const usage = new Map<string, number>();
+    for (const handle of handles) {
+      if (handle.kind !== 'face') continue;
+      const indices = handle.indices;
+      for (let i = 0; i + 2 < indices.length; i += 3) {
+        const a = indices[i];
+        const b = indices[i + 1];
+        const c = indices[i + 2];
+        const edges: [number, number][] = [
+          [a, b],
+          [b, c],
+          [c, a]
+        ];
+        for (const [from, to] of edges) {
+          const key = this.getEdgeKeyForIndices(from, to);
+          usage.set(key, (usage.get(key) ?? 0) + 1);
+        }
+      }
+    }
+    return usage;
+  }
+
+  private getEdgeKeyForIndices(a: number, b: number) {
+    const keyA = this.vertexIndexToPositionKey.get(a) ?? `idx:${a}`;
+    const keyB = this.vertexIndexToPositionKey.get(b) ?? `idx:${b}`;
+    return keyA < keyB ? `${keyA}|${keyB}` : `${keyB}|${keyA}`;
+  }
+
+  private getBoundaryEdgesForHandle(
+    handle: HandleDescriptor,
+    usage: Map<string, number>
+  ): { from: number; to: number }[] {
+    const edges: { from: number; to: number }[] = [];
+    if (handle.kind !== 'face') return edges;
+    const indices = handle.indices;
+    for (let i = 0; i + 2 < indices.length; i += 3) {
+      const a = indices[i];
+      const b = indices[i + 1];
+      const c = indices[i + 2];
+      const triEdges: [number, number][] = [
+        [a, b],
+        [b, c],
+        [c, a]
+      ];
+      for (const [from, to] of triEdges) {
+        const key = this.getEdgeKeyForIndices(from, to);
+        if ((usage.get(key) ?? 0) === 1) {
+          edges.push({ from, to });
+        }
+      }
+    }
+    return edges;
+  }
+
+  private rebuildPositionLookup(attr: BufferAttribute) {
+    this.positionKeyToIndices = new Map<string, Set<number>>();
+    this.vertexIndexToPositionKey = new Map<number, string>();
+    for (let i = 0; i < attr.count; i++) {
+      const key = this.computePositionKey(attr, i);
+      this.vertexIndexToPositionKey.set(i, key);
+      let bucket = this.positionKeyToIndices.get(key);
+      if (!bucket) {
+        bucket = new Set<number>();
+        this.positionKeyToIndices.set(key, bucket);
+      }
+      bucket.add(i);
+    }
+  }
+
+  private indicesMatch(a: number[], b: number[]) {
+    if (a.length !== b.length) return false;
+    const sortedA = [...a].sort((x, y) => x - y);
+    const sortedB = [...b].sort((x, y) => x - y);
+    for (let i = 0; i < sortedA.length; i++) {
+      if (sortedA[i] !== sortedB[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
   private applySelectionDelta() {
     if (!this.activeMesh || !this.transformTarget) return;
 
@@ -731,6 +905,7 @@ export class EditableMeshController {
 
     if (this.transformTarget === this.selectionPivot) {
       const handles = this.getHandlesForTransformation();
+      this.prepareFaceExtrusion(handles);
       if (handles.length === 0) {
         this.transformReference.copy(targetWorld);
         return;
@@ -781,15 +956,15 @@ export class EditableMeshController {
   private applyHandleDelta(handle: HandleDescriptor) {
     if (!this.activeMesh) return;
 
+    const geometry = this.activeMesh.geometry as BufferGeometry;
+    const positionAttr = geometry.getAttribute('position') as BufferAttribute;
+    const handles = this.getHandlesForTransformation();
+    this.prepareFaceExtrusion(handles);
     this.activeMesh.updateMatrixWorld(true);
     const worldPosition = handle.object.getWorldPosition(tempVector);
     const localPosition = this.activeMesh.worldToLocal(worldPosition.clone());
     const delta = localPosition.clone().sub(handle.referencePositionLocal);
     if (delta.lengthSq() === 0) return;
-
-    const geometry = this.activeMesh.geometry as BufferGeometry;
-    const positionAttr = geometry.getAttribute('position') as BufferAttribute;
-    const handles = this.getHandlesForTransformation();
     if (handles.length === 0) return;
 
     const indices = new Set<number>();
@@ -832,8 +1007,31 @@ export class EditableMeshController {
   }
 
   private commitSelectionEdit() {
-    this.refreshHandles();
-    this.updateSelectionState();
+    if (this.pendingExtrusions.length > 0) {
+      const pending = this.pendingExtrusions.map((entry) => ({
+        kind: entry.kind,
+        indices: entry.indices.slice()
+      }));
+      this.pendingExtrusions = [];
+      this.rebuildHandles();
+      const matches: HandleDescriptor[] = [];
+      for (const record of pending) {
+        const match = this.handles.find(
+          (handle) => handle.kind === record.kind && this.indicesMatch(handle.indices, record.indices)
+        );
+        if (match) {
+          matches.push(match);
+        }
+      }
+      if (matches.length > 0) {
+        this.selectHandles(matches);
+      } else {
+        this.updateSelectionState();
+      }
+    } else {
+      this.refreshHandles();
+      this.updateSelectionState();
+    }
   }
 
   private getHandlesForTransformation(): HandleDescriptor[] {
