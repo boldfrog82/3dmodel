@@ -13,11 +13,13 @@ declare module "three/examples/jsm/controls/TransformControls.js" {
 
   export class TransformControls extends Object3D {
     constructor(camera: PerspectiveCamera, domElement: HTMLElement);
+    space: "world" | "local";
     attach(object: Object3D): void;
     detach(): void;
     dispose(): void;
     setMode(mode: "translate" | "rotate" | "scale"): void;
     setSize(size: number): void;
+    setSpace(space: "world" | "local"): void;
     addEventListener<K extends keyof TransformControlsEventMap>(
       type: K,
       listener: (event: TransformControlsEventMap[K]) => void,
