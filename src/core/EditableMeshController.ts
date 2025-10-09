@@ -735,15 +735,11 @@ export class EditableMeshController {
     const normalAttr = geometry.getAttribute('normal') as BufferAttribute | undefined;
     const uvAttr = geometry.getAttribute('uv') as BufferAttribute | undefined;
 
-codex/fix-build-errors-in-editablemeshcontroller
     const originalVertexCount = positionAttr.count;
 
-
-main
     const positions = Array.from(positionAttr.array as ArrayLike<number>);
     const normals = normalAttr ? Array.from(normalAttr.array as ArrayLike<number>) : null;
     const uvs = uvAttr ? Array.from(uvAttr.array as ArrayLike<number>) : null;
-
     const copyVertex = (index: number) => {
       const base = index * 3;
       positions.push(positions[base], positions[base + 1], positions[base + 2]);
@@ -805,15 +801,11 @@ main
     geometry.computeBoundingSphere();
 
     const updatedPositionAttr = geometry.getAttribute('position') as BufferAttribute;
-codex/fix-build-errors-in-editablemeshcontroller
     const detachedIndices: number[] = [];
     for (let i = originalVertexCount; i < updatedPositionAttr.count; i++) {
       detachedIndices.push(i);
     }
     this.rebuildPositionLookup(updatedPositionAttr, detachedIndices);
-
-    this.rebuildPositionLookup(updatedPositionAttr);
-main
 
     const mesh = this.activeMesh;
     mesh.updateMatrixWorld(true);
@@ -877,7 +869,6 @@ main
     return edges;
   }
 
-codex/fix-build-errors-in-editablemeshcontroller
   private rebuildPositionLookup(attr: BufferAttribute, detachedIndices: number[] = []) {
     this.positionKeyToIndices = new Map<string, Set<number>>();
     this.vertexIndexToPositionKey = new Map<number, string>();
@@ -892,12 +883,6 @@ codex/fix-build-errors-in-editablemeshcontroller
         continue;
       }
 
-
-  private rebuildPositionLookup(attr: BufferAttribute) {
-    this.positionKeyToIndices = new Map<string, Set<number>>();
-    this.vertexIndexToPositionKey = new Map<number, string>();
-    for (let i = 0; i < attr.count; i++) {
-main
       const key = this.computePositionKey(attr, i);
       this.vertexIndexToPositionKey.set(i, key);
       let bucket = this.positionKeyToIndices.get(key);
