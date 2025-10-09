@@ -81,8 +81,28 @@ export class EditableMeshController {
       selected: new MeshBasicMaterial({ color: '#f97316' })
     },
     face: {
-      idle: new MeshBasicMaterial({ color: '#38bdf8', transparent: true, opacity: 0.6, side: 2 }),
-      selected: new MeshBasicMaterial({ color: '#f97316', transparent: true, opacity: 0.85, side: 2 })
+      idle: new MeshBasicMaterial({
+        color: '#38bdf8',
+        transparent: true,
+        opacity: 0.6,
+        side: 2,
+        depthTest: false,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1
+      }),
+      selected: new MeshBasicMaterial({
+        color: '#f97316',
+        transparent: true,
+        opacity: 0.85,
+        side: 2,
+        depthTest: false,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1
+      })
     }
   } as const;
 
