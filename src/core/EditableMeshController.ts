@@ -735,11 +735,11 @@ export class EditableMeshController {
     const normalAttr = geometry.getAttribute('normal') as BufferAttribute | undefined;
     const uvAttr = geometry.getAttribute('uv') as BufferAttribute | undefined;
 
-    const originalVertexCount = positionAttr.count;
-
     const positions = Array.from(positionAttr.array as ArrayLike<number>);
     const normals = normalAttr ? Array.from(normalAttr.array as ArrayLike<number>) : null;
     const uvs = uvAttr ? Array.from(uvAttr.array as ArrayLike<number>) : null;
+    const clones: { source: number; clone: number }[] = [];
+    const extrudedVertexSet = new Set<number>();
     const copyVertex = (index: number) => {
       const base = index * 3;
       positions.push(positions[base], positions[base + 1], positions[base + 2]);
@@ -751,7 +751,9 @@ export class EditableMeshController {
         const uvBase = index * 2;
         uvs.push(uvs[uvBase], uvs[uvBase + 1]);
       }
-      return positions.length / 3 - 1;
+      const newIndex = positions.length / 3 - 1;
+      clones.push({ source: index, clone: newIndex });
+      return newIndex;
     };
 
     const edgeUsage = this.collectFaceEdgeUsage(faceHandles);
@@ -764,6 +766,7 @@ export class EditableMeshController {
       for (const index of uniqueOriginal) {
         const newIndex = copyVertex(index);
         extrudedMap.set(index, newIndex);
+        extrudedVertexSet.add(newIndex);
       }
 
       const newIndices = originalIndices.map((index) => extrudedMap.get(index)!);
@@ -801,11 +804,15 @@ export class EditableMeshController {
     geometry.computeBoundingSphere();
 
     const updatedPositionAttr = geometry.getAttribute('position') as BufferAttribute;
-    const detachedIndices: number[] = [];
-    for (let i = originalVertexCount; i < updatedPositionAttr.count; i++) {
-      detachedIndices.push(i);
+    const detachedIndices = Array.from(extrudedVertexSet);
+    const seededSharedIndices = new Map<number, number>();
+    for (const { source, clone } of clones) {
+      if (extrudedVertexSet.has(clone)) {
+        continue;
+      }
+      seededSharedIndices.set(clone, source);
     }
-    this.rebuildPositionLookup(updatedPositionAttr, detachedIndices);
+    this.rebuildPositionLookup(updatedPositionAttr, detachedIndices, seededSharedIndices);
 
     const mesh = this.activeMesh;
     mesh.updateMatrixWorld(true);
@@ -869,7 +876,11 @@ export class EditableMeshController {
     return edges;
   }
 
-  private rebuildPositionLookup(attr: BufferAttribute, detachedIndices: number[] = []) {
+  private rebuildPositionLookup(
+    attr: BufferAttribute,
+    detachedIndices: number[] = [],
+    seededSharedIndices?: Map<number, number>
+  ) {
     this.positionKeyToIndices = new Map<string, Set<number>>();
     this.vertexIndexToPositionKey = new Map<number, string>();
 
@@ -880,6 +891,34 @@ export class EditableMeshController {
         const key = `unique:${i}`;
         this.vertexIndexToPositionKey.set(i, key);
         this.positionKeyToIndices.set(key, new Set<number>([i]));
+        continue;
+      }
+
+      if (seededSharedIndices?.has(i)) {
+        const target = seededSharedIndices.get(i)!;
+        let key = this.vertexIndexToPositionKey.get(target);
+        if (!key) {
+          if (detachedSet.has(target)) {
+            key = `unique:${target}`;
+          } else {
+            key = this.computePositionKey(attr, target);
+          }
+          this.vertexIndexToPositionKey.set(target, key);
+          let targetBucket = this.positionKeyToIndices.get(key);
+          if (!targetBucket) {
+            targetBucket = new Set<number>();
+            this.positionKeyToIndices.set(key, targetBucket);
+          }
+          targetBucket.add(target);
+        }
+
+        let bucket = this.positionKeyToIndices.get(key);
+        if (!bucket) {
+          bucket = new Set<number>();
+          this.positionKeyToIndices.set(key, bucket);
+        }
+        this.vertexIndexToPositionKey.set(i, key);
+        bucket.add(i);
         continue;
       }
 
