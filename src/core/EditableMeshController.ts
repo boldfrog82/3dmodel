@@ -931,6 +931,11 @@ export class EditableMeshController {
           targetBucket.add(target);
         }
 
+        if (key.startsWith('unique:')) {
+          this.detachedVertexIndices.add(target);
+          this.detachedVertexIndices.add(i);
+        }
+
         let bucket = this.positionKeyToIndices.get(key);
         if (!bucket) {
           bucket = new Set<number>();
