@@ -114,6 +114,7 @@ export class EditableMeshController {
 
   private vertexIndexToPositionKey = new Map<number, string>();
   private positionKeyToIndices = new Map<string, Set<number>>();
+  private detachedVertexIndices = new Set<number>();
   private pendingExtrusions: { kind: HandleDescriptor['kind']; indices: number[] }[] = [];
 
   constructor(
@@ -267,6 +268,7 @@ export class EditableMeshController {
   }
 
   private rebuildHandles() {
+    this.detachedVertexIndices.clear();
     this.handlesGroup.clear();
     this.handles = [];
     this.activeHandle = undefined;
@@ -551,6 +553,18 @@ export class EditableMeshController {
             this.positionKeyToIndices.delete(existingKey);
           }
         }
+      }
+
+      if (this.detachedVertexIndices.has(index)) {
+        const uniqueKey = `unique:${index}`;
+        let uniqueBucket = this.positionKeyToIndices.get(uniqueKey);
+        if (!uniqueBucket) {
+          uniqueBucket = new Set<number>();
+          this.positionKeyToIndices.set(uniqueKey, uniqueBucket);
+        }
+        uniqueBucket.add(index);
+        this.vertexIndexToPositionKey.set(index, uniqueKey);
+        continue;
       }
 
       const newKey = this.computePositionKey(attr, index);
@@ -884,11 +898,16 @@ export class EditableMeshController {
     this.positionKeyToIndices = new Map<string, Set<number>>();
     this.vertexIndexToPositionKey = new Map<number, string>();
 
+    this.detachedVertexIndices.clear();
     const detachedSet = new Set(detachedIndices);
+    for (const index of detachedSet) {
+      this.detachedVertexIndices.add(index);
+    }
 
     for (let i = 0; i < attr.count; i++) {
       if (detachedSet.has(i)) {
         const key = `unique:${i}`;
+        this.detachedVertexIndices.add(i);
         this.vertexIndexToPositionKey.set(i, key);
         this.positionKeyToIndices.set(key, new Set<number>([i]));
         continue;
@@ -1086,6 +1105,7 @@ export class EditableMeshController {
       this.refreshHandles();
       this.updateSelectionState();
     }
+    this.detachedVertexIndices.clear();
   }
 
   private getHandlesForTransformation(): HandleDescriptor[] {
