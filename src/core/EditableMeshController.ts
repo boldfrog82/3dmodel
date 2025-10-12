@@ -299,7 +299,7 @@ export class EditableMeshController {
         occurrences: number;
       }
     >();
-    const planeGroups = new Map<string, { indices: number[]; faceIndex: number }>();
+    const planeGroups = new Map<string, number[][]>();
     const quantize = (value: number) => Math.round(value * 1000) / 1000;
     const vertexKeyCache = new Map<number, string>();
     const positionDedupPrecision = POSITION_KEY_PRECISION;
@@ -383,13 +383,10 @@ export class EditableMeshController {
 
       let group = planeGroups.get(key);
       if (!group) {
-        group = {
-          indices: [],
-          faceIndex: faceCounter++
-        };
+        group = [];
         planeGroups.set(key, group);
       }
-      group.indices.push(...tri);
+      group.push(tri.slice());
 
       for (let e = 0; e < 3; e++) {
         const a = tri[e];
@@ -428,26 +425,30 @@ export class EditableMeshController {
     }
 
     for (const group of planeGroups.values()) {
-      const { centroid, normal } = this.computeFaceGroupAttributes(positionAttr, group.indices);
-      const faceWorldPosition = mesh.localToWorld(centroid.clone());
-      const worldNormal = this.transformNormalToWorld(normal.clone(), mesh);
-      const faceGeometry = this.createFaceHandleGeometry(positionAttr, group.indices, centroid, normal);
-      const faceMesh = new Mesh(faceGeometry, this.materials.face.idle);
-      faceMesh.name = `Face ${group.faceIndex}`;
-      faceMesh.userData.__handle = true;
-      faceMesh.position.copy(centroid);
-      tempQuaternion.setFromUnitVectors(new Vector3(0, 0, 1), normal);
-      faceMesh.quaternion.copy(tempQuaternion);
-      faceMesh.renderOrder = 1;
-      this.handlesGroup.add(faceMesh);
-      this.handles.push({
-        object: faceMesh,
-        indices: group.indices.slice(),
-        kind: 'face',
-        referencePositionLocal: centroid.clone(),
-        referencePositionWorld: faceWorldPosition.clone(),
-        normal: worldNormal.clone()
-      });
+      const components = this.splitCoplanarFaceComponents(group);
+      for (const component of components) {
+        const indices = component.flat();
+        const { centroid, normal } = this.computeFaceGroupAttributes(positionAttr, indices);
+        const faceWorldPosition = mesh.localToWorld(centroid.clone());
+        const worldNormal = this.transformNormalToWorld(normal.clone(), mesh);
+        const faceGeometry = this.createFaceHandleGeometry(positionAttr, indices, centroid, normal);
+        const faceMesh = new Mesh(faceGeometry, this.materials.face.idle);
+        faceMesh.name = `Face ${faceCounter++}`;
+        faceMesh.userData.__handle = true;
+        faceMesh.position.copy(centroid);
+        tempQuaternion.setFromUnitVectors(new Vector3(0, 0, 1), normal);
+        faceMesh.quaternion.copy(tempQuaternion);
+        faceMesh.renderOrder = 1;
+        this.handlesGroup.add(faceMesh);
+        this.handles.push({
+          object: faceMesh,
+          indices: indices.slice(),
+          kind: 'face',
+          referencePositionLocal: centroid.clone(),
+          referencePositionWorld: faceWorldPosition.clone(),
+          normal: worldNormal.clone()
+        });
+      }
     }
 
     for (const entry of edgeMap.values()) {
@@ -651,6 +652,61 @@ export class EditableMeshController {
     }
 
     return { centroid, normal };
+  }
+
+  private splitCoplanarFaceComponents(triangles: number[][]): number[][][] {
+    if (triangles.length === 0) {
+      return [];
+    }
+
+    const edgeToFaces = new Map<string, number[]>();
+    const triangleEdges: string[][] = [];
+
+    triangles.forEach((tri, faceIndex) => {
+      const edges: string[] = [];
+      for (let i = 0; i < 3; i++) {
+        const a = tri[i];
+        const b = tri[(i + 1) % 3];
+        const key = this.getEdgeKeyForIndices(a, b);
+        edges.push(key);
+        let bucket = edgeToFaces.get(key);
+        if (!bucket) {
+          bucket = [];
+          edgeToFaces.set(key, bucket);
+        }
+        bucket.push(faceIndex);
+      }
+      triangleEdges[faceIndex] = edges;
+    });
+
+    const visited = new Array<boolean>(triangles.length).fill(false);
+    const components: number[][][] = [];
+
+    for (let i = 0; i < triangles.length; i++) {
+      if (visited[i]) continue;
+      const stack = [i];
+      visited[i] = true;
+      const component: number[][] = [];
+
+      while (stack.length > 0) {
+        const current = stack.pop()!;
+        component.push(triangles[current]);
+        for (const edgeKey of triangleEdges[current]) {
+          const neighbors = edgeToFaces.get(edgeKey);
+          if (!neighbors) continue;
+          for (const neighbor of neighbors) {
+            if (!visited[neighbor]) {
+              visited[neighbor] = true;
+              stack.push(neighbor);
+            }
+          }
+        }
+      }
+
+      components.push(component);
+    }
+
+    return components;
   }
   private getFacePlaneBasis(normal: Vector3) {
     const u = new Vector3();
