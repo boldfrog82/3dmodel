@@ -1091,9 +1091,9 @@ export class EditableMeshController {
     if (!this.activeMesh) return;
 
     const geometry = this.activeMesh.geometry as BufferGeometry;
-    const positionAttr = geometry.getAttribute('position') as BufferAttribute;
     const handles = this.getHandlesForTransformation();
     this.prepareFaceExtrusion(handles);
+    const positionAttr = geometry.getAttribute('position') as BufferAttribute;
     this.activeMesh.updateMatrixWorld(true);
     const worldPosition = handle.object.getWorldPosition(tempVector);
     const localPosition = this.activeMesh.worldToLocal(worldPosition.clone());
