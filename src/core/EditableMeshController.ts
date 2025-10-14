@@ -546,7 +546,24 @@ export class EditableMeshController {
   private updatePositionKeyBucketsForIndices(indices: Set<number>, attr: BufferAttribute) {
     for (const index of indices) {
       const existingKey = this.vertexIndexToPositionKey.get(index);
-      if (existingKey) {
+      const isDetached = this.detachedVertexIndices.has(index);
+
+      let cloneHandled = false;
+      if (isDetached && existingKey && existingKey.startsWith('unique:')) {
+        const ownerIndex = Number(existingKey.slice('unique:'.length));
+        if (Number.isFinite(ownerIndex) && ownerIndex !== index) {
+          let cloneBucket = this.positionKeyToIndices.get(existingKey);
+          if (!cloneBucket) {
+            cloneBucket = new Set<number>();
+            this.positionKeyToIndices.set(existingKey, cloneBucket);
+          }
+          cloneBucket.add(index);
+          this.vertexIndexToPositionKey.set(index, existingKey);
+          cloneHandled = true;
+        }
+      }
+
+      if (!cloneHandled && existingKey) {
         const bucket = this.positionKeyToIndices.get(existingKey);
         if (bucket) {
           bucket.delete(index);
@@ -556,7 +573,11 @@ export class EditableMeshController {
         }
       }
 
-      if (this.detachedVertexIndices.has(index)) {
+      if (cloneHandled) {
+        continue;
+      }
+
+      if (isDetached) {
         if (existingKey && existingKey.startsWith('unique:')) {
           const ownerIndex = Number(existingKey.slice('unique:'.length));
           if (ownerIndex !== index && Number.isFinite(ownerIndex)) {
