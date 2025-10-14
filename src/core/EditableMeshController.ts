@@ -557,6 +557,19 @@ export class EditableMeshController {
       }
 
       if (this.detachedVertexIndices.has(index)) {
+        if (existingKey && existingKey.startsWith('unique:')) {
+          const ownerIndex = Number(existingKey.slice('unique:'.length));
+          if (ownerIndex !== index && Number.isFinite(ownerIndex)) {
+            let existingBucket = this.positionKeyToIndices.get(existingKey);
+            if (!existingBucket) {
+              existingBucket = new Set<number>();
+              this.positionKeyToIndices.set(existingKey, existingBucket);
+            }
+            existingBucket.add(index);
+            continue;
+          }
+        }
+
         const uniqueKey = `unique:${index}`;
         let uniqueBucket = this.positionKeyToIndices.get(uniqueKey);
         if (!uniqueBucket) {
