@@ -911,8 +911,13 @@ export class EditableMeshController {
     const detachedSet = new Set<number>(extrudedVertexSet);
     const seededSharedIndices = new Map<number, number>();
     for (const { source, clone } of clones) {
-      if (extrudedVertexSet.has(clone) || extrudedVertexSet.has(source)) {
+      if (extrudedVertexSet.has(clone)) {
         detachedSet.add(clone);
+        continue;
+      }
+      if (extrudedVertexSet.has(source)) {
+        detachedSet.add(clone);
+        seededSharedIndices.set(clone, source);
         continue;
       }
       seededSharedIndices.set(clone, source);
