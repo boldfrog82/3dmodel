@@ -908,15 +908,16 @@ export class EditableMeshController {
     geometry.computeBoundingSphere();
 
     const updatedPositionAttr = geometry.getAttribute('position') as BufferAttribute;
-    const detachedIndices = Array.from(extrudedVertexSet);
+    const detachedSet = new Set<number>(extrudedVertexSet);
     const seededSharedIndices = new Map<number, number>();
     for (const { source, clone } of clones) {
-      if (extrudedVertexSet.has(clone)) {
+      if (extrudedVertexSet.has(clone) || extrudedVertexSet.has(source)) {
+        detachedSet.add(clone);
         continue;
       }
       seededSharedIndices.set(clone, source);
     }
-    this.rebuildPositionLookup(updatedPositionAttr, detachedIndices, seededSharedIndices);
+    this.rebuildPositionLookup(updatedPositionAttr, Array.from(detachedSet), seededSharedIndices);
 
     const mesh = this.activeMesh;
     mesh.updateMatrixWorld(true);
