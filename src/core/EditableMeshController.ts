@@ -30,6 +30,7 @@ interface HandleDescriptor {
   extrusion?: {
     originalIndices: number[];
     extrudedIndices: number[];
+    clonedIndices: Set<number>;
   };
 }
 
@@ -268,6 +269,9 @@ export class EditableMeshController {
   }
 
   private rebuildHandles() {
+    for (const handle of this.handles) {
+      handle.extrusion = undefined;
+    }
     this.detachedVertexIndices.clear();
     this.handlesGroup.clear();
     this.handles = [];
@@ -844,7 +848,7 @@ export class EditableMeshController {
     const uvs = uvAttr ? Array.from(uvAttr.array as ArrayLike<number>) : null;
     const clones: { source: number; clone: number }[] = [];
     const extrudedVertexSet = new Set<number>();
-    const copyVertex = (index: number) => {
+    const copyVertex = (index: number, recordSet?: Set<number>) => {
       const base = index * 3;
       positions.push(positions[base], positions[base + 1], positions[base + 2]);
       if (normals) {
@@ -857,6 +861,9 @@ export class EditableMeshController {
       }
       const newIndex = positions.length / 3 - 1;
       clones.push({ source: index, clone: newIndex });
+      if (recordSet) {
+        recordSet.add(newIndex);
+      }
       return newIndex;
     };
 
@@ -867,8 +874,9 @@ export class EditableMeshController {
       const originalIndices = handle.indices.slice();
       const uniqueOriginal = Array.from(new Set(originalIndices));
       const extrudedMap = new Map<number, number>();
+      const handleCloneIndices = new Set<number>();
       for (const index of uniqueOriginal) {
-        const newIndex = copyVertex(index);
+        const newIndex = copyVertex(index, handleCloneIndices);
         extrudedMap.set(index, newIndex);
         extrudedVertexSet.add(newIndex);
       }
@@ -878,18 +886,19 @@ export class EditableMeshController {
       for (const edge of boundaryEdges) {
         const fromNew = extrudedMap.get(edge.from)!;
         const toNew = extrudedMap.get(edge.to)!;
-        copyVertex(edge.from);
-        copyVertex(edge.to);
-        copyVertex(toNew);
-        copyVertex(edge.from);
-        copyVertex(toNew);
-        copyVertex(fromNew);
+        copyVertex(edge.from, handleCloneIndices);
+        copyVertex(edge.to, handleCloneIndices);
+        copyVertex(toNew, handleCloneIndices);
+        copyVertex(edge.from, handleCloneIndices);
+        copyVertex(toNew, handleCloneIndices);
+        copyVertex(fromNew, handleCloneIndices);
       }
 
       handle.indices = newIndices;
       handle.extrusion = {
         originalIndices,
-        extrudedIndices: newIndices.slice()
+        extrudedIndices: newIndices.slice(),
+        clonedIndices: handleCloneIndices
       };
       this.pendingExtrusions.push({ kind: handle.kind, indices: newIndices.slice() });
       updatedHandles.push(handle);
@@ -1099,8 +1108,14 @@ export class EditableMeshController {
       const positionAttr = geometry.getAttribute('position') as BufferAttribute;
       const affectedIndices = new Set<number>();
       for (const handle of handles) {
-        for (const index of handle.indices) {
-          this.addIndicesSharingPosition(index, positionAttr, affectedIndices);
+        if (handle.extrusion) {
+          for (const index of handle.extrusion.clonedIndices) {
+            affectedIndices.add(index);
+          }
+        } else {
+          for (const index of handle.indices) {
+            this.addIndicesSharingPosition(index, positionAttr, affectedIndices);
+          }
         }
       }
 
@@ -1148,8 +1163,14 @@ export class EditableMeshController {
 
     const indices = new Set<number>();
     for (const selectedHandle of handles) {
-      for (const index of selectedHandle.indices) {
-        this.addIndicesSharingPosition(index, positionAttr, indices);
+      if (selectedHandle.extrusion) {
+        for (const index of selectedHandle.extrusion.clonedIndices) {
+          indices.add(index);
+        }
+      } else {
+        for (const index of selectedHandle.indices) {
+          this.addIndicesSharingPosition(index, positionAttr, indices);
+        }
       }
     }
 
@@ -1186,6 +1207,9 @@ export class EditableMeshController {
   }
 
   private commitSelectionEdit() {
+    for (const handle of this.handles) {
+      handle.extrusion = undefined;
+    }
     if (this.pendingExtrusions.length > 0) {
       const pending = this.pendingExtrusions.map((entry) => ({
         kind: entry.kind,
