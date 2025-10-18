@@ -1006,14 +1006,6 @@ export class EditableMeshController {
     }
 
     for (let i = 0; i < attr.count; i++) {
-      if (detachedSet.has(i)) {
-        const key = `unique:${i}`;
-        this.detachedVertexIndices.add(i);
-        this.vertexIndexToPositionKey.set(i, key);
-        this.positionKeyToIndices.set(key, new Set<number>([i]));
-        continue;
-      }
-
       if (seededSharedIndices?.has(i)) {
         const target = seededSharedIndices.get(i)!;
         let key = this.vertexIndexToPositionKey.get(target);
@@ -1044,6 +1036,14 @@ export class EditableMeshController {
         }
         this.vertexIndexToPositionKey.set(i, key);
         bucket.add(i);
+        continue;
+      }
+
+      if (detachedSet.has(i)) {
+        const key = `unique:${i}`;
+        this.detachedVertexIndices.add(i);
+        this.vertexIndexToPositionKey.set(i, key);
+        this.positionKeyToIndices.set(key, new Set<number>([i]));
         continue;
       }
 
